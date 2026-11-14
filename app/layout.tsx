@@ -1,16 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Anek_Devanagari, Anek_Latin } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const latin = Anek_Latin({ variable: "--font-latin", subsets: ["latin"], display: "swap" });
+const devanagari = Anek_Devanagari({ variable: "--font-devanagari", subsets: ["devanagari"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "Inspector Pawan",
@@ -19,10 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${latin.variable} ${devanagari.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
