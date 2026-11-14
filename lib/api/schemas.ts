@@ -1,0 +1,141 @@
+import { z } from "zod";
+import { MAX_TEXT_BYTES } from "../data/parse";
+import { ROLE_NOTE_MAX } from "../roles";
+
+const role = z.enum(["ward_officer", "school", "housing_society", "other"]);
+const pollutant = z.enum(["pm25", "pm10"]);
+const place = z.string().trim().min(1).max(120);
+
+/** Workspace profile fields. */
+export const workspaceProfile = z.object({
+  role,
+  name: z.string().trim().min(1).max(120),
+  roleNote: z.string().trim().max(ROLE_NOTE_MAX).nullable().default(null),
+  places: z.array(place).max(10).default([]),
+});
+
+/** POST /api/workspace */
+export const createWorkspaceRequest = workspaceProfile;
+/** PATCH /api/workspace */
+export const patchWorkspaceRequest = workspaceProfile.partial();
+
+const tableText = z.string().max(MAX_TEXT_BYTES, "The table is larger than 200 KB.");
+
+/** POST /api/repair */
+export const repairRequest = z.object({ text: tableText });
+
+const columnMap = z
+  .object({
+    location: z.number().int().min(0),
+    date: z.number().int().min(0),
+    time: z.number().int().min(0),
+    datetime: z.number().int().min(0),
+    pm25: z.number().int().min(0),
+    pm10: z.number().int().min(0),
+    lat: z.number().int().min(0),
+    lng: z.number().int().min(0),
+  })
+  .partial();
+
+const repairOperation = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("scale"), field: pollutant, factor: z.number().positive().max(1_000_000) }),
+  z.object({ op: z.literal("date_order"), order: z.enum(["dmy", "mdy"]) }),
+  z.object({ op: z.literal("mark_missing"), field: pollutant, token: z.string().max(40) }),
+]);
+
+const repairProposal = z.object({
+  id: z.string().max(40),
+  source: z.enum(["code", "ai"]),
+  operation: repairOperation,
+  rows: z.array(z.number().int().positive()).max(5000),
+  description: z.string().max(300),
+  example: z.string().max(300),
+});
+
+const rowList = z.array(z.number().int().positive()).max(5000);
+
+const snapshotStats = z.looseObject({
+  location: z.string().max(120),
+  pollutant,
+  mean: z.number().nullable(),
+  max: z.looseObject({ value: z.number() }).nullable(),
+  buckets: z.array(z.object({ startHour: z.number().int(), mean: z.number(), count: z.number().int(), rows: rowList })).max(24),
+});
+
+const snapshotAction = z.looseObject({
+  libraryId: z.string().max(60),
+  title: z.string().max(200),
+  target: z.object({ location: z.string().max(120), startHour: z.number().int(), endHour: z.number().int(), pollutant }),
+});
+
+/** A previous brief kept in the browser when there is no database. */
+export const briefSnapshot = z.object({
+  periodStart: z.string().max(20).nullable(),
+  periodEnd: z.string().max(20).nullable(),
+  locations: z.array(z.string().max(120)).max(200),
+  stats: z.array(snapshotStats).max(400),
+  hotspots: z.array(z.looseObject({ location: z.string().max(120) })).max(400),
+  actions: z.array(snapshotAction).max(20),
+});
+
+/** POST /api/brief */
+export const briefRequest = z.object({
+  text: tableText,
+  columns: columnMap.optional(),
+  proposals: z.array(repairProposal).max(30).default([]),
+  accepted: z.array(z.string().max(40)).max(30).default([]),
+  workspace: workspaceProfile,
+  workspaceId: z.uuid().optional(),
+  previousBriefId: z.uuid().optional(),
+  previous: briefSnapshot.optional(),
+});
+
+const avoidItem = z.object({
+  kind: z.enum(["local", "citywide"]),
+  location: z.string().max(120).nullable(),
+  startHour: z.number().int().min(0).max(24).nullable(),
+  endHour: z.number().int().min(0).max(24).nullable(),
+  start: z.string().max(20).nullable(),
+  end: z.string().max(20).nullable(),
+  category: z.enum(["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"]),
+  pollutants: z.array(pollutant).max(2),
+  rows: rowList,
+});
+
+/** POST /api/advisory */
+export const advisoryRequest = z.object({
+  language: z.enum(["en", "hi"]),
+  level: z.enum(["simple", "detailed"]),
+  role,
+  area: z.string().trim().min(1).max(120),
+  headline: z.string().max(300),
+  summary: z.string().max(1500),
+  findings: z.array(z.object({ title: z.string().max(200), detail: z.string().max(800) })).max(10),
+  actions: z.array(z.object({ title: z.string().max(200), when: z.string().max(160), where: z.string().max(160) })).max(10),
+  avoid: z.array(avoidItem).max(20),
+});
+
+const careText = z.string().max(800);
+
+/** Notice content as published. */
+export const noticeContent = z.object({
+  language: z.enum(["en", "hi"]),
+  level: z.enum(["simple", "detailed"]),
+  title: z.string().max(200),
+  headline: z.string().max(300),
+  summary: z.string().max(1000),
+  category: z.enum(["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"]).nullable(),
+  value: z.number().nullable(),
+  care: z.object({ children: careText, olderAdults: careText, sensitive: careText, everyone: careText }),
+  avoid: z.array(z.object({ place: z.string().max(160), time: z.string().max(80), category: z.string().max(20), advice: z.string().max(400), rows: rowList })).max(20),
+  readings: z.number().int().min(0),
+  sensors: z.number().int().min(0),
+});
+
+/** POST /api/notices */
+export const publishRequest = z.object({
+  workspaceId: z.uuid(),
+  briefId: z.uuid().nullable().default(null),
+  area: z.string().trim().min(1).max(120),
+  content: noticeContent,
+});
