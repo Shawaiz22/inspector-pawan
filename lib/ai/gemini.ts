@@ -16,7 +16,7 @@ export const FALLBACK_MODELS: ReadonlyArray<{ model: string; timeoutMs: number }
   { model: "gemini-3.5-flash", timeoutMs: 70_000 },
 ];
 /** Time limit for the configured model. */
-export const PRIMARY_TIMEOUT_MS = 40_000;
+export const PRIMARY_TIMEOUT_MS = 15_000;
 
 const cache = new LruCache<unknown>(200);
 let client: GoogleGenAI | null = null;
