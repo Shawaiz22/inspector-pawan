@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { categoryFor, POLLUTANT_LABELS } from "@/lib/data/naqi";
 import type { AqiCategory, DatasetAnalysis, NormalizedRow, Pollutant } from "@/lib/types";
 import { AQI_COLORS } from "./ui";
@@ -23,12 +23,16 @@ export function HeatGrid({
   rows,
   pollutant,
   highlight,
+  onInspect,
 }: {
   analysis: DatasetAnalysis;
   rows: NormalizedRow[];
   pollutant: Pollutant;
   highlight: ReadonlySet<number>;
+  /** Called with the row behind a cell when it is hovered or focused. */
+  onInspect?: (rows: number[]) => void;
 }) {
+  const [readout, setReadout] = useState("Hover or focus a cell to see its reading and row.");
   const { cellByKey, excluded, saturated } = useMemo(() => {
     const cells = new Map<string, NormalizedRow>();
     for (const row of rows) if (row.timestamp) cells.set(`${row.location}|${row.timestamp}`, row);
@@ -43,8 +47,9 @@ export function HeatGrid({
   }, [analysis.flags, rows, pollutant]);
 
   return (
-    <div>
-      <div className="overflow-x-auto">
+    <div className="min-w-0">
+      <p aria-live="polite" className="mb-2 min-h-6 text-sm font-medium">{readout}</p>
+      <div className="max-w-full overflow-x-auto">
         <table className="border-separate border-spacing-1 text-sm">
           <caption className="sr-only">
             {POLLUTANT_LABELS[pollutant]} readings by location and time. Categories are indicative because NAQI uses 24-hour averages.
@@ -68,20 +73,32 @@ export function HeatGrid({
                   const value = row?.values[pollutant] ?? null;
                   const style = { animationDelay: `${column * 15}ms` };
                   if (!row || value === null || excluded.has(row.row)) {
+                    const label = `${location}, ${shortTime(timestamp)}: no usable reading${row ? `, row ${row.row}` : ""}`;
+                    const inspect = () => {
+                      setReadout(label);
+                      if (row) onInspect?.([row.row]);
+                    };
                     return (
-                      <td key={timestamp} style={style} className="heat-cell h-9 rounded-[4px] border border-dotted border-muted text-center text-muted" aria-label={`${location} ${shortTime(timestamp)}: no usable reading${row ? `, row ${row.row}` : ""}`} />
+                      <td key={timestamp} style={style} tabIndex={0} onMouseEnter={inspect} onFocus={inspect} className="heat-cell h-9 cursor-pointer rounded-[4px] border border-dotted border-muted text-center text-muted hover:border-accent" aria-label={label} />
                     );
                   }
                   const category = categoryFor(pollutant, value);
                   const colors = AQI_COLORS[category];
                   const marked = highlight.has(row.row);
+                  const label = `${location}, ${shortTime(timestamp)}: ${category} ${value} ug/m3, row ${row.row}${saturated.has(row.row) ? ", sensor at its ceiling, true level may be higher" : ""}`;
+                  const inspect = () => {
+                    setReadout(label);
+                    onInspect?.([row.row]);
+                  };
                   return (
                     <td
                       key={timestamp}
+                      tabIndex={0}
+                      onMouseEnter={inspect}
+                      onFocus={inspect}
                       style={{ ...style, background: colors.bg, color: colors.fg, backgroundImage: saturated.has(row.row) ? HATCH : undefined }}
-                      className={`heat-cell h-9 rounded-[4px] text-center font-semibold ${marked ? "outline outline-[3px] outline-offset-1 outline-accent" : ""}`}
-                      title={`${category} ${value}${saturated.has(row.row) ? " (sensor at its ceiling, true level may be higher)" : ""}`}
-                      aria-label={`${location} ${shortTime(timestamp)}: ${category}, ${value}, row ${row.row}${saturated.has(row.row) ? ", true level may be higher" : ""}`}
+                      className={`heat-cell h-9 cursor-pointer rounded-[4px] text-center font-semibold transition-transform hover:scale-110 hover:outline hover:outline-2 hover:outline-accent ${marked ? "outline outline-[3px] outline-offset-1 outline-accent" : ""}`}
+                      aria-label={label}
                     >
                       {Math.round(value)}
                     </td>

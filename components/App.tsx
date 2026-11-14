@@ -408,7 +408,7 @@ function EvidenceView({ result }: { result: BriefResult }) {
               </button>
             ))}
           </div>
-          <HeatGrid analysis={result.analysis} rows={result.rows} pollutant={pollutant} highlight={focus} />
+          <HeatGrid analysis={result.analysis} rows={result.rows} pollutant={pollutant} highlight={focus} onInspect={(rows) => setFocus(new Set(rows))} />
         </Panel>
         <Panel title="Rows">
           {focusedRows.length === 0 ? (
@@ -445,7 +445,7 @@ function EvidenceView({ result }: { result: BriefResult }) {
             <p className="mt-1 text-sm">Local hotspot: {[...new Set(result.analysis.hotspots.map((spot) => spot.location))].join(", ")}</p>
           ) : null}
         </Panel>
-        <ol className="flex flex-col gap-3">
+        <ol className="flex min-w-0 flex-col gap-3">
           {result.findings.map((finding) => (
             <FindingCard key={finding.id} finding={finding} onFocus={(rows) => setFocus(new Set(rows))} />
           ))}
