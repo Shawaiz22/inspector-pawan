@@ -6,8 +6,8 @@ Live app: https://inspector-pawan.vercel.app/
 
 Inspector Pawan turns a messy air quality sheet into a verified case for ward officers, schools,
 housing societies and other local bodies: a data check with every repair logged by row, evidence
-with row citations verified by code, a case plan of local actions, citizen notices in English,
-Hindi and Urdu, and a follow-up that compares each new upload with the previous one.
+with row citations verified by code, a case plan of local actions, citizen notices in English
+and Hindi, and a follow-up that compares each new upload with the previous one.
 
 ## Run locally
 
