@@ -52,6 +52,7 @@ export async function generateJson<T>(request: JsonRequest<T>): Promise<T> {
     { text: request.prompt },
   ];
 
+  let failure = "no valid reply";
   for (const model of [...new Set([env.geminiModel, FALLBACK_MODEL])]) {
     try {
       const response = await ai.models.generateContent({
@@ -70,9 +71,12 @@ export async function generateJson<T>(request: JsonRequest<T>): Promise<T> {
         cache.set(key, parsed.data);
         return parsed.data;
       }
-    } catch {
+      failure = "reply did not match the expected shape";
+    } catch (error) {
       // Overloaded, timed out or malformed: try the next model.
+      const status = (error as { status?: number }).status;
+      failure = status ? `Gemini status ${status}` : error instanceof Error ? error.name : "unknown error";
     }
   }
-  throw new AiError();
+  throw new AiError(undefined, failure);
 }

@@ -51,8 +51,11 @@ export class RateLimitError extends HttpError {
 
 /** Gemini failed, timed out or returned something unusable. */
 export class AiError extends HttpError {
-  constructor(message = "Inspector Pawan could not reach Gemini just now. Your data check and stats are ready; try again in a minute for the written brief.") {
-    super(502, message, "ai_unavailable");
+  constructor(
+    message = "Inspector Pawan could not reach Gemini just now. Try again in a minute.",
+    reason?: string,
+  ) {
+    super(502, reason ? `${message} (${reason})` : message, "ai_unavailable");
   }
 }
 
