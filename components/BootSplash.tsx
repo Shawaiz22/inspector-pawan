@@ -60,8 +60,8 @@ export function BootProvider({
       // ignore
     }
     if (seen || reduceMotion) {
-      finish();
-      return;
+      const skipTimer = window.setTimeout(finish, 0);
+      return () => window.clearTimeout(skipTimer);
     }
 
     const timer = window.setTimeout(finish, durationMs);
