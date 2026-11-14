@@ -1,8 +1,8 @@
 import { connection } from "next/server";
 import { briefRequest } from "@/lib/api/schemas";
 import { generateJson } from "@/lib/ai/gemini";
-import { auditPrompt, briefPrompt } from "@/lib/ai/prompts";
-import { auditResponse, briefResponse } from "@/lib/ai/schemas";
+import { briefPrompt } from "@/lib/ai/prompts";
+import { briefResponse } from "@/lib/ai/schemas";
 import { libraryForRole, validateActions } from "@/lib/brief/actions";
 import { compareBriefs } from "@/lib/brief/compare";
 import { assembleFindings } from "@/lib/brief/findings";
@@ -17,14 +17,13 @@ export const maxDuration = 120;
 
 const limiter = new RateLimiter(10, 60_000);
 
-function snapshotOf(analysis: DatasetAnalysis, actions: BriefSnapshot["actions"]): BriefSnapshot {
+function snapshotOf(analysis: DatasetAnalysis): BriefSnapshot {
   return {
     periodStart: analysis.periodStart,
     periodEnd: analysis.periodEnd,
     locations: analysis.locations,
     stats: analysis.stats,
     hotspots: analysis.hotspots,
-    actions,
   };
 }
 
@@ -46,7 +45,7 @@ export function POST(request: Request): Promise<Response> {
     const sql = getSql();
     const past = stored && sql ? await findPreviousBrief(sql, stored.id, body.previousBriefId) : null;
     const previous = past?.snapshot ?? (body.previous as unknown as BriefSnapshot | undefined) ?? null;
-    const compare: CompareResult | null = previous ? compareBriefs(previous, snapshotOf(analysis, [])) : null;
+    const compare: CompareResult | null = previous ? compareBriefs(previous, snapshotOf(analysis)) : null;
 
     const rowIndex = buildRowIndex(normalized.rows);
     const written = await generateJson({
@@ -58,20 +57,13 @@ export function POST(request: Request): Promise<Response> {
         area: profile.name,
         places: profile.places,
         library: libraryForRole(profile.role),
-        changes: compare && compare.status === "compared" ? { changes: compare.changes, newLocations: compare.newLocations, missingLocations: compare.missingLocations, actionOutcomes: compare.actionOutcomes } : null,
+        changes: compare && compare.status === "compared" ? { changes: compare.changes, newLocations: compare.newLocations, missingLocations: compare.missingLocations } : null,
       }),
       schema: briefResponse,
       temperature: 0.2,
     });
 
-    const audits = await generateJson({
-      call: "audit",
-      prompt: auditPrompt(written.findings, analysis),
-      schema: auditResponse,
-      temperature: 0.2,
-    }).catch(() => null);
-
-    const findings = assembleFindings(written, audits, rowIndex, analysis);
+    const findings = assembleFindings(written, rowIndex, analysis);
     const { accepted: actions, rejected: rejectedActions } = validateActions(written.actions, {
       role: profile.role,
       analysis,
@@ -79,7 +71,7 @@ export function POST(request: Request): Promise<Response> {
       places: profile.places,
     });
 
-    const snapshot = snapshotOf(analysis, actions);
+    const snapshot = snapshotOf(analysis);
     let saved: { id: string; createdAt: string } | null = null;
     if (stored && sql) {
       saved = await insertBrief(sql, {

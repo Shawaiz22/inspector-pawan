@@ -73,30 +73,15 @@ export const briefResponse = z.object({
 });
 export type BriefResponse = z.infer<typeof briefResponse>;
 
-/** Gemini call 3: audit of each finding against the stats. */
-export const auditResponse = z.object({
-  audits: z
-    .array(
-      z.object({
-        index: z.number().int().min(0),
-        status: z.enum(["supported", "overstated", "unsupported"]),
-        note: z.string().max(300),
-      }),
-    )
-    .max(8),
-});
-export type AuditResponse = z.infer<typeof auditResponse>;
-
 const careText = z.string().max(600);
 
-/** Gemini call 4: internal note and citizen notice for one language and level. */
+/** Gemini call 3: internal note and citizen notice for one language and level. */
 export const advisoryResponse = z.object({
   internalNote: z.object({ title: z.string().max(160), body: z.string().max(3000) }),
   notice: z.object({
     headline: z.string().max(200),
     summary: z.string().max(800),
     care: z.object({ children: careText, olderAdults: careText, sensitive: careText, everyone: careText }),
-    avoid: z.array(z.object({ index: z.number().int().min(0), advice: z.string().max(300) })).max(20),
   }),
 });
 export type AdvisoryResponse = z.infer<typeof advisoryResponse>;

@@ -1,6 +1,7 @@
 import libraryJson from "../../data/action-library.json";
 import { WARD_OFFICE } from "../roles";
 import type { CaseAction, DatasetAnalysis, LibraryAction, Role } from "../types";
+import { isAtLeast } from "../data/naqi";
 import { isKnownLocation, verifyCitation, type RowIndex } from "./verify";
 
 /** The full action library. */
@@ -19,7 +20,7 @@ export type ProposedAction = Omit<CaseAction, "group" | "title"> & { title?: str
 /** What validation needs to know about the case. */
 export interface ActionContext {
   role: Role;
-  analysis: Pick<DatasetAnalysis, "locations" | "events" | "hotspots" | "avoid">;
+  analysis: Pick<DatasetAnalysis, "locations" | "events" | "hotspots" | "stats">;
   rowIndex: RowIndex;
   /** Nearby places the workspace owner listed. */
   places: readonly string[];
@@ -42,7 +43,7 @@ function needsReasons(entry: LibraryAction, action: ProposedAction, context: Act
   if (entry.needs === "local") {
     const location = action.target.location;
     const isHotspot = context.analysis.hotspots.some((spot) => sameText(spot.location, location));
-    const hasBadWindow = context.analysis.avoid.some((item) => item.location !== null && sameText(item.location, location));
+    const hasBadWindow = context.analysis.stats.some((entry) => sameText(entry.location, location) && entry.worst !== null && isAtLeast(entry.worst.category, "Poor"));
     if (!isHotspot && !hasBadWindow) return [`${location} has no local problem in the data for this action to fix.`];
   }
   return [];

@@ -65,16 +65,12 @@ function geminiReplies(call: string) {
       ],
     };
   }
-  if (call === "audit") {
-    return { audits: [{ index: 0, status: "supported", note: "Matches the stats." }, { index: 1, status: "unsupported", note: "Rows do not match." }] };
-  }
   return {
     internalNote: { title: "Note", body: "Body" },
     notice: {
       headline: "Air is poor near Govindpura",
       summary: "Limit time outdoors.",
       care: { children: "c", olderAdults: "o", sensitive: "s", everyone: "e" },
-      avoid: [{ index: 0, advice: "Stay indoors from 10:00 to 18:00." }],
     },
   };
 }
@@ -95,7 +91,7 @@ describe("POST /api/brief", () => {
     expect(result.findings[0].verification.verified).toBe(true);
     expect(result.findings[0].confidence).toBe("high");
     expect(result.findings[1].verification).toEqual({ verified: false, reasons: ["Rows 43 are not from Kolar Ward 12."] });
-    expect(result.findings[1].audit.status).toBe("unsupported");
+    expect(result.findings[0]).not.toHaveProperty("audit");
     expect(result.actions.map((action: { libraryId: string }) => action.libraryId)).toEqual(["sc-pe-timing"]);
     expect(result.rejectedActions[0].libraryId).toBe("made-up-action");
     expect(result.analysis.hotspots[0].location).toBe("Govindpura Ward 41");
@@ -187,16 +183,15 @@ describe("POST /api/repair", () => {
 });
 
 describe("POST /api/advisory", () => {
-  const avoid = [{ kind: "local", location: "Govindpura Ward 41", startHour: 10, endHour: 18, start: null, end: null, category: "Very Poor", pollutants: ["pm25"], rows: [43, 44] }];
-  const request = { language: "hi", level: "simple", role: "school", area: "Kolar school", headline: "h", summary: "s", findings: [], actions: [], avoid };
+  const request = { language: "hi", level: "simple", role: "school", area: "Kolar school", headline: "h", summary: "s", findings: [], actions: [] };
 
-  it("keeps places, times and rows from code, only advice from Gemini", async () => {
+  it("writes the note and notice with care sections in the chosen language", async () => {
     const { POST } = await import("@/app/api/advisory/route");
     const result = await (await POST(post("/api/advisory", request))).json();
-    expect(result.notice.avoid).toEqual([
-      { place: "Govindpura Ward 41", time: "10:00-18:00", category: "Very Poor", advice: "Stay indoors from 10:00 to 18:00.", rows: [43, 44] },
-    ]);
+    expect(result.language).toBe("hi");
+    expect(result.notice.care).toEqual({ children: "c", olderAdults: "o", sensitive: "s", everyone: "e" });
     expect(generateJson.mock.calls[0][0].temperature).toBe(0.4);
+    expect(generateJson.mock.calls[0][0].prompt).toContain("Hindi");
   });
 
   it("rejects Urdu and any other unsupported language", async () => {

@@ -1,6 +1,6 @@
 import { POLLUTANT_LABELS } from "../data/naqi";
 import { rolePreset, WARD_OFFICE } from "../roles";
-import type { AvoidAdvice, ColumnMap, DatasetAnalysis, LibraryAction, QualityFlag, RawTable, RepairProposal, Role } from "../types";
+import type { ColumnMap, DatasetAnalysis, LibraryAction, QualityFlag, RawTable, RepairProposal, Role } from "../types";
 
 /** Most row numbers sent per item, keeping prompts under the 300-row budget. */
 const ROWS_PER_ITEM = 12;
@@ -93,23 +93,9 @@ ${dataBlock("period", { start: analysis.periodStart, end: analysis.periodEnd, lo
 ${dataBlock("stats", statsSummary(analysis))}
 ${dataBlock("citywide_events", analysis.events.map((event) => ({ ...event, rows: clip(event.rows) })))}
 ${dataBlock("local_hotspots", analysis.hotspots.map((spot) => ({ ...spot, rows: clip(spot.rows) })))}
-${dataBlock("poor_or_worse_windows", analysis.avoid.filter((item) => item.kind === "local").map((item) => ({ location: item.location, startHour: item.startHour, endHour: item.endHour, category: item.category, rows: clip(item.rows) })))}
 ${dataBlock("data_problems", flagSummary(analysis.flags))}
 ${dataBlock("change_since_last_brief", input.changes)}
 ${dataBlock("action_library", input.library)}`;
-}
-
-/** Prompt for call 3: audit each finding against the stats only. */
-export function auditPrompt(findings: Array<{ title: string; detail: string; location: string | null; rows: number[] }>, analysis: DatasetAnalysis): string {
-  return `You audit claims about air quality data. ${RULES}
-For each claim (by index), compare it with the stats, events, hotspots and data problems only.
-status: "supported" if the numbers and wording match; "overstated" if it exaggerates (e.g. certainty, size, cause); "unsupported" if the stats do not show it.
-note: one short sentence saying why.
-${dataBlock("claims", findings.map((finding, index) => ({ index, ...finding })))}
-${dataBlock("stats", statsSummary(analysis))}
-${dataBlock("citywide_events", analysis.events.map((event) => ({ start: event.start, end: event.end, category: event.category })))}
-${dataBlock("local_hotspots", analysis.hotspots.map((spot) => ({ location: spot.location, pollutant: spot.pollutant, ratio: spot.ratio, share: spot.share })))}
-${dataBlock("data_problems", flagSummary(analysis.flags))}`;
 }
 
 /** Notice languages. */
@@ -134,12 +120,6 @@ export interface AdvisoryPromptInput {
   summary: string;
   findings: Array<{ title: string; detail: string }>;
   actions: Array<{ title: string; when: string; where: string }>;
-  avoid: AvoidAdvice[];
-}
-
-function describeAvoid(item: AvoidAdvice): string {
-  if (item.kind === "citywide") return `Citywide, ${item.start} to ${item.end} (${item.category})`;
-  return `${item.location}, daily ${hoursLabel(item.startHour ?? 0, item.endHour ?? 24)} (${item.category})`;
 }
 
 /** Prompt for call 4: internal note and citizen notice in one language and level. */
@@ -149,9 +129,7 @@ export function advisoryPrompt(input: AdvisoryPromptInput): string {
 ${LEVEL_RULES[input.level]}
 1. internalNote for ${preset.noteAudience}: what the data shows, what we will do (the actions), and what to check next time.
 2. notice ("${preset.noticeTitle}") for ${preset.noticeAudience}: headline, summary, and care advice for children, older adults, people with breathing or heart problems (sensitive), and everyone. Be kind and practical: masks (N95) outdoors at bad times, shorter outdoor time, keep windows shut during the worst hours, see a doctor if breathing gets hard.
-3. notice.avoid: for each avoid item by index, one sentence of advice on limiting time outdoors near that place at that time. Do not change places or times. Never suggest routes.
 Hourly categories are indicative (NAQI uses 24-hour averages).
 ${dataBlock("brief", { headline: input.headline, summary: input.summary, findings: input.findings })}
-${dataBlock("actions", input.actions)}
-${dataBlock("avoid_items", input.avoid.map((item, index) => ({ index, when_and_where: describeAvoid(item) })))}`;
+${dataBlock("actions", input.actions)}`;
 }

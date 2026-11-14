@@ -120,7 +120,6 @@ interface BriefRow {
   period_end: string | null;
   locations: string[];
   stats: { stats: LocationStats[]; hotspots: LocalHotspot[] };
-  actions: CaseAction[];
   created_at: string;
 }
 
@@ -146,7 +145,6 @@ function toPastBrief(row: BriefRow): PastBrief {
       locations: row.locations,
       stats: row.stats.stats,
       hotspots: row.stats.hotspots,
-      actions: row.actions,
     },
   };
 }
@@ -154,8 +152,8 @@ function toPastBrief(row: BriefRow): PastBrief {
 /** The previous brief: a chosen one, or the latest of the workspace. */
 export async function findPreviousBrief(sql: Sql, workspaceId: string, briefId?: string): Promise<PastBrief | null> {
   const rows = briefId
-    ? await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, actions, created_at FROM briefs WHERE workspace_id = $1 AND id = $2", [workspaceId, briefId])
-    : await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, actions, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 1", [workspaceId]);
+    ? await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2", [workspaceId, briefId])
+    : await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 1", [workspaceId]);
   return rows[0] ? toPastBrief(rows[0]) : null;
 }
 

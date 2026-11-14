@@ -18,15 +18,14 @@ Body `{ text }` (max 200 KB, 5000 rows). Returns `{ headers, rowCount, columns, 
 Body `{ text, columns?, proposals, accepted: string[], workspace, workspaceId?, previousBriefId?, previous? }`.
 Send `x-workspace-token` with `workspaceId` to store the brief and compare with the latest stored one. Without a database, send `previous` (the `snapshot` of the last result, kept in localStorage).
 Returns `{ briefId, createdAt, fingerprint, headline, summary, findings, actions, rejectedActions, compare, analysis, rows, ledger, snapshot }`.
-- `findings[]`: `{ id, kind, title, detail, location, pollutant, rows, confidence, verification: { verified, reasons }, audit: { status, note } | null }`. Show a warning with `reasons` when `verified` is false, and the audit note when `status` is not `supported`.
+- `findings[]`: `{ id, kind, title, detail, location, pollutant, rows, confidence, verification: { verified, reasons } }`. Show a warning with `reasons` when `verified` is false.
 - `actions[]`: `{ libraryId, group: "you_can_do" | "ask_others", title, when, where, why, followUp, rows, target, letter }`.
-- `compare`: `null`, `{ status: "different_areas", message }` or `{ status: "compared", changes, newLocations, missingLocations, hotspotsAppeared, hotspotsResolved, actionOutcomes, notNewer }`.
-- `analysis`: `flags, stats, events, hotspots, avoid, coordinates, timestamps, periodStart, periodEnd, locations` for the heat grid, map and avoid advice. `rows` are the cleaned rows for highlighting.
+- `compare`: `null`, `{ status: "different_areas", message }` or `{ status: "compared", changes, newLocations, missingLocations, hotspotsAppeared, hotspotsResolved, notNewer }`.
+- `analysis`: `flags, stats, events, hotspots, coordinates, timestamps, periodStart, periodEnd, locations` for the heat grid. `rows` are the cleaned rows for highlighting.
 
 ## POST /api/advisory
-Body `{ language, level, role, area, headline, summary, findings, actions, avoid }` where `avoid` is `analysis.avoid`.
-Returns `{ language, level, internalNote: { title, body }, notice: { headline, summary, care, avoid } }`.
-`notice.avoid[]` is `{ place, time, category, advice, rows }`; an empty `place` means a citywide event.
+Body `{ language, level, role, area, headline, summary, findings, actions }`.
+Returns `{ language, level, internalNote: { title, body }, notice: { headline, summary, care } }` with `care` = `{ children, olderAdults, sensitive, everyone }`.
 
 ## POST /api/notices
 Header `x-workspace-token`. Body `{ workspaceId, briefId, area, content }` (content as in `noticeContent` in `lib/api/schemas.ts`). Returns `201 { slug, path, publishedAt }`.

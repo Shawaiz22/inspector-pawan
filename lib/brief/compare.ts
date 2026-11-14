@@ -1,6 +1,6 @@
-import { STEADY_BAND, windowMean } from "../data/stats";
+import { STEADY_BAND } from "../data/stats";
 import { round1 } from "../data/readings";
-import type { ActionOutcome, BriefSnapshot, CaseAction, CompareResult, LocationStats, StatChange } from "../types";
+import type { BriefSnapshot, CompareResult, LocationStats, StatChange } from "../types";
 
 /** Below this share of shared locations, briefs are not compared. */
 export const MIN_OVERLAP = 0.5;
@@ -23,33 +23,11 @@ function relativeChange(before: number, after: number): number {
   return Math.round(((after - before) / before) * 1000) / 1000;
 }
 
-/** Re-measures a stored action's target window in the new data and reports the change. */
-export function actionOutcome(
-  action: CaseAction,
-  previous: Map<string, LocationStats>,
-  current: Map<string, LocationStats>,
-): ActionOutcome {
-  const { location, pollutant, startHour, endHour } = action.target;
-  const key = statsKey(location, pollutant);
-  const beforeStats = previous.get(key);
-  const afterStats = current.get(key);
-  const before = beforeStats ? windowMean(beforeStats, startHour, endHour) : null;
-  const after = afterStats ? windowMean(afterStats, startHour, endHour) : null;
-  const base = { libraryId: action.libraryId, title: action.title, target: action.target };
-  if (!before || !after) {
-    return { ...base, before: before?.mean ?? null, after: after?.mean ?? null, change: null, verdict: "no_data", rows: after?.rows ?? [] };
-  }
-  const change = relativeChange(before.mean, after.mean);
-  const direction = directionOf(change);
-  const verdict = direction === "improved" ? "worked" : direction === "worsened" ? "worse" : "no_change";
-  return { ...base, before: before.mean, after: after.mean, change, verdict, rows: after.rows };
-}
-
 /**
  * Compares a new brief with the previous one from the same workspace, in code.
  * Needs at least half of the previous locations to be present again. Reports
  * per-location changes (within 10% is steady), new and missing locations,
- * hotspots that appeared or resolved, and whether last time's actions worked.
+ * and hotspots that appeared or resolved.
  */
 export function compareBriefs(previous: BriefSnapshot, current: BriefSnapshot): CompareResult {
   const currentLocations = new Map(current.locations.map((name) => [name.toLowerCase(), name]));
@@ -93,6 +71,5 @@ export function compareBriefs(previous: BriefSnapshot, current: BriefSnapshot): 
     missingLocations: previous.locations.filter((name) => !currentLocations.has(name.toLowerCase())),
     hotspotsAppeared: [...currentHotspots].filter((name) => !previousHotspots.has(name)),
     hotspotsResolved: [...previousHotspots].filter((name) => !currentHotspots.has(name)),
-    actionOutcomes: previous.actions.map((action) => actionOutcome(action, previousStats, currentStats)),
   };
 }

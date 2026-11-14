@@ -1,4 +1,3 @@
-import { buildAvoidAdvice } from "../brief/avoid";
 import type { DatasetAnalysis, NormalizedRow, Pollutant, QualityFlag } from "../types";
 import { findEventSlots, findHotspots, indexSlots, mergeEventSlots } from "./events";
 import { checkQuality, excludedReadings } from "./quality";
@@ -7,7 +6,7 @@ import { computeStats } from "./stats";
 
 /**
  * Runs every code check on cleaned rows: quality flags, citywide events,
- * local hotspots, per-location stats and avoid advice. Rows are grouped once
+ * local hotspots and per-location stats. Rows are grouped once
  * and every later step reuses those series.
  * @param pollutants the pollutant columns present in the upload
  * @param cleaningFlags flags raised while normalizing (bad dates, unit mismatches)
@@ -55,6 +54,5 @@ export function analyzeRows(
     events,
     eventSlots,
     hotspots: findHotspots(slotIndex, eventTimes),
-    avoid: buildAvoidAdvice(stats, events),
   };
 }

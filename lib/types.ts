@@ -173,22 +173,6 @@ export interface LocalHotspot {
   rows: number[];
 }
 
-/** Advice on when to limit time outdoors, built only from computed windows. */
-export interface AvoidAdvice {
-  kind: "local" | "citywide";
-  /** Null for citywide events. */
-  location: string | null;
-  /** For local advice: daily hours. */
-  startHour: number | null;
-  endHour: number | null;
-  /** For citywide advice: the episode timestamps. */
-  start: string | null;
-  end: string | null;
-  category: AqiCategory;
-  pollutants: Pollutant[];
-  rows: number[];
-}
-
 /** Everything code computes from a cleaned dataset. */
 export interface DatasetAnalysis {
   rowCount: number;
@@ -202,7 +186,6 @@ export interface DatasetAnalysis {
   events: EventWindow[];
   eventSlots: EventSlot[];
   hotspots: LocalHotspot[];
-  avoid: AvoidAdvice[];
 }
 
 /** Result of checking cited rows against the data. */
@@ -222,7 +205,6 @@ export interface Finding {
   rows: number[];
   confidence: Confidence;
   verification: Verification;
-  audit: { status: "supported" | "overstated" | "unsupported"; note: string } | null;
 }
 
 /** An entry in data/action-library.json. */
@@ -279,18 +261,6 @@ export interface StatChange {
   direction: "improved" | "worsened" | "steady";
 }
 
-/** Whether a stored action's target window got better in the new data. */
-export interface ActionOutcome {
-  libraryId: string;
-  title: string;
-  target: ActionTarget;
-  before: number | null;
-  after: number | null;
-  change: number | null;
-  verdict: "worked" | "no_change" | "worse" | "no_data";
-  rows: number[];
-}
-
 /** Code-computed follow-up between the previous brief and this one. */
 export type CompareResult =
   | { status: "different_areas"; overlap: number; message: string }
@@ -303,7 +273,6 @@ export type CompareResult =
       missingLocations: string[];
       hotspotsAppeared: string[];
       hotspotsResolved: string[];
-      actionOutcomes: ActionOutcome[];
     };
 
 /** The snapshot of a past brief that compare needs. */
@@ -313,5 +282,4 @@ export interface BriefSnapshot {
   locations: string[];
   stats: LocationStats[];
   hotspots: LocalHotspot[];
-  actions: CaseAction[];
 }

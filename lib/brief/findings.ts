@@ -1,4 +1,4 @@
-import type { AuditResponse, BriefResponse } from "../ai/schemas";
+import type { BriefResponse } from "../ai/schemas";
 import type { Confidence, DatasetAnalysis, Finding } from "../types";
 import { weakestConfidence } from "./confidence";
 import { verifyCitation, type RowIndex } from "./verify";
@@ -21,18 +21,15 @@ export function findingConfidence(
 
 /**
  * Turns Gemini's findings into checked findings: citations verified by code,
- * confidence computed from the data, and the auditor's verdict attached.
+ * and confidence computed from the data.
  * Findings that fail verification are kept and shown with their reasons.
  */
 export function assembleFindings(
   response: BriefResponse,
-  audits: AuditResponse | null,
   index: RowIndex,
   analysis: DatasetAnalysis,
 ): Finding[] {
-  const auditByIndex = new Map(audits?.audits.map((audit) => [audit.index, audit]) ?? []);
   return response.findings.map((item, position) => {
-    const audit = auditByIndex.get(position);
     return {
       id: `f${position + 1}`,
       kind: item.kind,
@@ -43,7 +40,6 @@ export function assembleFindings(
       rows: item.rows,
       confidence: findingConfidence(item.location, item.pollutant, analysis.stats),
       verification: verifyCitation({ rows: item.rows, location: item.location, pollutant: item.pollutant }, index),
-      audit: audit ? { status: audit.status, note: audit.note } : null,
     };
   });
 }

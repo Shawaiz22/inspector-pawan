@@ -2,7 +2,6 @@ import { advisoryRequest } from "@/lib/api/schemas";
 import { generateJson } from "@/lib/ai/gemini";
 import { advisoryPrompt } from "@/lib/ai/prompts";
 import { advisoryResponse } from "@/lib/ai/schemas";
-import { buildAvoidNotice } from "@/lib/brief/notice";
 import { handle, readJson } from "@/lib/server/http";
 import { RateLimiter } from "@/lib/server/rateLimit";
 
@@ -28,7 +27,6 @@ export function POST(request: Request): Promise<Response> {
         headline: written.notice.headline,
         summary: written.notice.summary,
         care: written.notice.care,
-        avoid: buildAvoidNotice(input.avoid, written.notice.avoid),
       },
     });
   });

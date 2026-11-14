@@ -121,24 +121,3 @@ export function computeStats(
 ): LocationStats[] {
   return series.map((entry) => seriesStats(entry, excluded, eventTimes));
 }
-
-/**
- * Mean of the readings in a daily window [startHour, endHour), weighted by
- * bucket counts. Returns null when the window has no readings.
- */
-export function windowMean(
-  stats: LocationStats,
-  startHour: number,
-  endHour: number,
-): { mean: number; rows: number[] } | null {
-  let sum = 0;
-  let count = 0;
-  const rows: number[] = [];
-  for (const bucket of stats.buckets) {
-    if (bucket.startHour < startHour || bucket.startHour >= endHour) continue;
-    sum += bucket.mean * bucket.count;
-    count += bucket.count;
-    rows.push(...bucket.rows);
-  }
-  return count > 0 ? { mean: round1(sum / count), rows } : null;
-}

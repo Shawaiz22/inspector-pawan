@@ -62,12 +62,6 @@ const snapshotStats = z.looseObject({
   buckets: z.array(z.object({ startHour: z.number().int(), mean: z.number(), count: z.number().int(), rows: rowList })).max(24),
 });
 
-const snapshotAction = z.looseObject({
-  libraryId: z.string().max(60),
-  title: z.string().max(200),
-  target: z.object({ location: z.string().max(120), startHour: z.number().int(), endHour: z.number().int(), pollutant }),
-});
-
 /** A previous brief kept in the browser when there is no database. */
 export const briefSnapshot = z.object({
   periodStart: z.string().max(20).nullable(),
@@ -75,7 +69,6 @@ export const briefSnapshot = z.object({
   locations: z.array(z.string().max(120)).max(200),
   stats: z.array(snapshotStats).max(400),
   hotspots: z.array(z.looseObject({ location: z.string().max(120) })).max(400),
-  actions: z.array(snapshotAction).max(20),
 });
 
 /** POST /api/brief */
@@ -90,18 +83,6 @@ export const briefRequest = z.object({
   previous: briefSnapshot.optional(),
 });
 
-const avoidItem = z.object({
-  kind: z.enum(["local", "citywide"]),
-  location: z.string().max(120).nullable(),
-  startHour: z.number().int().min(0).max(24).nullable(),
-  endHour: z.number().int().min(0).max(24).nullable(),
-  start: z.string().max(20).nullable(),
-  end: z.string().max(20).nullable(),
-  category: z.enum(["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"]),
-  pollutants: z.array(pollutant).max(2),
-  rows: rowList,
-});
-
 /** POST /api/advisory */
 export const advisoryRequest = z.object({
   language: z.enum(["en", "hi"]),
@@ -112,7 +93,6 @@ export const advisoryRequest = z.object({
   summary: z.string().max(1500),
   findings: z.array(z.object({ title: z.string().max(200), detail: z.string().max(800) })).max(10),
   actions: z.array(z.object({ title: z.string().max(200), when: z.string().max(160), where: z.string().max(160) })).max(10),
-  avoid: z.array(avoidItem).max(20),
 });
 
 const careText = z.string().max(800);
@@ -127,7 +107,6 @@ export const noticeContent = z.object({
   category: z.enum(["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"]).nullable(),
   value: z.number().nullable(),
   care: z.object({ children: careText, olderAdults: careText, sensitive: careText, everyone: careText }),
-  avoid: z.array(z.object({ place: z.string().max(160), time: z.string().max(80), category: z.string().max(20), advice: z.string().max(400), rows: rowList })).max(20),
   readings: z.number().int().min(0),
   sensors: z.number().int().min(0),
 });

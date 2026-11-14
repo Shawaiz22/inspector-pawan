@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { categoryFor } from "@/lib/data/naqi";
-import { windowMean } from "@/lib/data/stats";
 import { loadSample } from "../support/samples";
 
 const week1 = loadSample("week1").analysis;
@@ -45,13 +44,6 @@ describe("stats", () => {
     const stats = statsFor(week1, "Bairagarh Ward 2", "pm10");
     expect(stats?.missing).toBe(10);
     expect(stats?.confidence).toBe("low");
-  });
-
-  it("averages a daily window across days", () => {
-    const stats = statsFor(week1, "Govindpura Ward 41", "pm25");
-    const window = stats ? windowMean(stats, 12, 16) : null;
-    expect(window?.mean).toBe(201);
-    expect(window?.rows.sort((a, b) => a - b)).toEqual([43, 44, 103, 104]);
   });
 });
 

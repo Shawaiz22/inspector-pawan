@@ -4,7 +4,7 @@ import { analyzeRows } from "@/lib/data/analyze";
 import { POLLUTANTS } from "@/lib/data/naqi";
 import { normalizeTable, proposeRepairs } from "@/lib/data/normalize";
 import { detectColumns, parseTable } from "@/lib/data/parse";
-import type { BriefSnapshot, CaseAction, DatasetAnalysis, NormalizedRow, RepairProposal } from "@/lib/types";
+import type { BriefSnapshot, DatasetAnalysis, NormalizedRow, RepairProposal } from "@/lib/types";
 
 /** Reads a sample CSV from public/samples. */
 export function readSample(name: "week1" | "week2"): string {
@@ -28,13 +28,12 @@ export function loadSample(name: "week1" | "week2"): SampleCase {
 }
 
 /** Builds the snapshot compare needs from an analysis. */
-export function snapshotOf(analysis: DatasetAnalysis, actions: CaseAction[] = []): BriefSnapshot {
+export function snapshotOf(analysis: DatasetAnalysis): BriefSnapshot {
   return {
     periodStart: analysis.periodStart,
     periodEnd: analysis.periodEnd,
     locations: analysis.locations,
     stats: analysis.stats,
     hotspots: analysis.hotspots,
-    actions,
   };
 }
