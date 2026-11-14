@@ -3,6 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import type { AdvisoryResult, BriefResult, NoticeContent, Profile, RepairResult } from "@/lib/api/types";
 import { ApiFailure, postJson } from "@/lib/client/api";
+import { cleanedRowsCsv, downloadText } from "@/lib/client/download";
 import { loadJson, saveJson } from "@/lib/client/storage";
 import { categoryRank, POLLUTANT_LABELS } from "@/lib/data/naqi";
 import { ROLE_NOTE_MAX, ROLE_PRESETS, rolePreset } from "@/lib/roles";
@@ -444,6 +445,10 @@ function EvidenceView({ result }: { result: BriefResult }) {
           {result.analysis.hotspots.length > 0 ? (
             <p className="mt-1 text-sm">Local hotspot: {[...new Set(result.analysis.hotspots.map((spot) => spot.location))].join(", ")}</p>
           ) : null}
+          <div className="no-print mt-4 flex flex-wrap gap-2">
+            <Button kind="quiet" onClick={() => downloadText(`inspector-pawan-cleaned-${result.fingerprint.slice(0, 8)}.csv`, cleanedRowsCsv(result.rows, result.analysis.flags), "text/csv")}>Download cleaned data (CSV)</Button>
+            <Button kind="quiet" onClick={() => downloadText(`inspector-pawan-case-${result.fingerprint.slice(0, 8)}.json`, JSON.stringify({ headline: result.headline, summary: result.summary, findings: result.findings, actions: result.actions, compare: result.compare, ledger: result.ledger, stats: result.analysis.stats, flags: result.analysis.flags, events: result.analysis.events, hotspots: result.analysis.hotspots }, null, 2), "application/json")}>Download case report (JSON)</Button>
+          </div>
         </Panel>
         <ol className="flex min-w-0 flex-col gap-3">
           {result.findings.map((finding) => (
