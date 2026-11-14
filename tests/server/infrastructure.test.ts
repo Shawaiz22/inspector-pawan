@@ -94,13 +94,13 @@ describe("generateJson", () => {
       GoogleGenAI: class {
         models = { generateContent };
       },
-      ThinkingLevel: { LOW: "LOW" },
     }));
     const { generateJson } = await import("@/lib/ai/gemini");
     const request = { call: "test", prompt: "hello", schema: z.object({ ok: z.boolean() }), temperature: 0.2 };
 
     expect(await generateJson(request)).toEqual({ ok: true });
-    expect(generateContent.mock.calls.map((call) => call[0].model)).toEqual(["primary-model", "gemini-flash-latest"]);
+    expect(generateContent.mock.calls.map((call) => call[0].model)).toEqual(["primary-model", "gemini-3.1-flash-lite"]);
+    expect(generateContent.mock.calls[0][0].contents[0].parts[0].text).toContain("JSON Schema");
     expect(await generateJson(request)).toEqual({ ok: true });
     expect(generateContent).toHaveBeenCalledTimes(2);
 

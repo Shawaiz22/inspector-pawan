@@ -13,7 +13,7 @@ import { prepareCase, readTable } from "@/lib/server/pipeline";
 import { RateLimiter } from "@/lib/server/rateLimit";
 import type { BriefSnapshot, CompareResult, DatasetAnalysis, RepairProposal, Role } from "@/lib/types";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 const limiter = new RateLimiter(10, 60_000);
 

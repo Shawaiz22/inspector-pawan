@@ -5,7 +5,7 @@ import { advisoryResponse } from "@/lib/ai/schemas";
 import { handle, readJson } from "@/lib/server/http";
 import { RateLimiter } from "@/lib/server/rateLimit";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 const limiter = new RateLimiter(20, 60_000);
 

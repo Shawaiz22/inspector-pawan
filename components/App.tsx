@@ -9,7 +9,7 @@ import { ROLE_NOTE_MAX, ROLE_PRESETS, rolePreset } from "@/lib/roles";
 import type { BriefSnapshot, CaseAction, Finding, Pollutant, Role } from "@/lib/types";
 import { BootProvider, BootSplash, BrandMark } from "./BootSplash";
 import { HeatGrid } from "./HeatGrid";
-import { Button, Logo, Panel, RowChips, Warning } from "./ui";
+import { Button, Logo, Panel, RowChips, Spinner, Tag, Warning } from "./ui";
 
 type View = "upload" | "check" | "evidence" | "plan" | "notice" | "followup";
 type Language = "en" | "hi";
@@ -167,24 +167,30 @@ function Workspace() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <BrandMark slot="header" className="h-10 w-10 text-accent">
-            <Logo className="h-10 w-10 text-accent" />
-          </BrandMark>
-          <h1 className="text-[28px] font-semibold">Inspector Pawan</h1>
-        </div>
-        {workspace && !editing ? (
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span>
-              {workspace.profile.name} ({rolePreset(workspace.profile.role).label})
-            </span>
-            {caseCount > 0 ? <span className="rounded-full border border-line px-3 py-1">Case #{caseCount}</span> : null}
-            <Button kind="quiet" onClick={() => setEditing(true)}>Settings</Button>
+    <div className="flex flex-1 flex-col">
+      <header className="no-print sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <BrandMark slot="header" className="h-10 w-10 text-accent">
+              <Logo className="h-10 w-10 text-accent" />
+            </BrandMark>
+            <div>
+              <h1 className="text-[22px] font-semibold leading-tight">Inspector Pawan</h1>
+              <p className="text-xs text-muted">Every air reading investigated. Every action followed up.</p>
+            </div>
           </div>
-        ) : null}
+          {workspace && !editing ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{workspace.profile.name}</span>
+              <Tag>{rolePreset(workspace.profile.role).label}</Tag>
+              {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
+              {workspace.id ? null : <Tag tone="warn">Saved in this browser only</Tag>}
+              <Button kind="quiet" onClick={() => setEditing(true)}>Settings</Button>
+            </div>
+          ) : null}
+        </div>
       </header>
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-4 py-6">
 
       <div aria-live="polite" className="sr-only">{announce}</div>
 
@@ -193,16 +199,18 @@ function Workspace() {
       ) : (
         <>
           <nav aria-label="Case steps" className="no-print">
-            <ol className="flex flex-wrap gap-2">
-              {STEPS.map((step) => (
-                <li key={step.view}>
+            <ol className="flex flex-wrap items-center gap-1">
+              {STEPS.map((step, index) => (
+                <li key={step.view} className="flex items-center gap-1">
+                  {index > 0 ? <span aria-hidden className={`h-px w-4 ${available[step.view] ? "bg-accent" : "bg-line"}`} /> : null}
                   <button
                     type="button"
                     disabled={!available[step.view]}
                     aria-current={view === step.view ? "step" : undefined}
                     onClick={() => setView(step.view)}
-                    className={`rounded-full px-3 py-1 text-sm disabled:opacity-40 ${view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface"}`}
+                    className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface hover:border-accent"}`}
                   >
+                    <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${view === step.view ? "bg-accent-ink text-accent" : "bg-haze"}`}>{index + 1}</span>
                     {step.label}
                   </button>
                 </li>
@@ -210,8 +218,13 @@ function Workspace() {
             </ol>
           </nav>
 
-          {busy ? <p role="status" className="rounded-[10px] border border-line bg-surface px-3 py-2">{busy}…</p> : null}
-          {error ? <p role="alert" className="rounded-[10px] bg-warn-bg px-3 py-2 text-warn">{error}</p> : null}
+          {busy ? (
+            <p role="status" className="flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3">
+              <Spinner />
+              {busy}…
+            </p>
+          ) : null}
+          {error ? <p role="alert" className="rounded-[14px] border-l-4 border-warn bg-warn-bg px-4 py-3 text-warn">{error}</p> : null}
 
           {view === "upload" ? (
             <UploadView text={text} sourceLabel={sourceLabel} busy={busy !== null} onText={(value) => { setText(value); setSourceLabel(""); }} onFile={readFile} onSample={loadSample} onCheck={checkData} />
@@ -225,6 +238,10 @@ function Workspace() {
           {view === "followup" && result ? <FollowUpView result={result} onNext={() => { setRepair(null); setText(""); setView("upload"); }} /> : null}
         </>
       )}
+      </div>
+      <footer className="no-print border-t border-line px-4 py-4 text-center text-xs text-muted">
+        Findings are checked against your rows by code. Hourly categories are indicative: NAQI uses 24-hour averages.
+      </footer>
     </div>
   );
 }
@@ -242,15 +259,18 @@ function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave:
   }
 
   return (
-    <Panel title="Set up your workspace">
-      <form onSubmit={submit} className="flex max-w-xl flex-col gap-4">
+    <Panel title="Open your case file" description="Tell Inspector Pawan who is asking. Actions, letters and notices are written for what you can actually do." className="mx-auto w-full max-w-2xl">
+      <form onSubmit={submit} className="flex flex-col gap-5">
         <fieldset>
           <legend className="mb-2 font-medium">Who is asking?</legend>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             {ROLE_PRESETS.map((preset) => (
-              <label key={preset.id} className="flex items-center gap-2">
-                <input type="radio" name="role" value={preset.id} checked={role === preset.id} onChange={() => setRole(preset.id)} />
-                {preset.label}
+              <label key={preset.id} className={`flex cursor-pointer items-start gap-3 rounded-[10px] border p-3 transition-colors ${role === preset.id ? "border-accent bg-haze" : "border-line hover:border-accent"}`}>
+                <input type="radio" name="role" value={preset.id} checked={role === preset.id} onChange={() => setRole(preset.id)} className="mt-1 accent-[var(--accent)]" />
+                <span>
+                  <span className="block font-medium">{preset.label}</span>
+                  <span className="block text-sm text-muted">{preset.noticeTitle}</span>
+                </span>
               </label>
             ))}
           </div>
@@ -291,21 +311,28 @@ function UploadView({
   onCheck: () => void;
 }) {
   return (
-    <Panel title="Upload readings">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Button kind="quiet" onClick={() => onSample(1)}>Load sample data: week 1</Button>
-          <Button kind="quiet" onClick={() => onSample(2)}>Load sample data: week 2</Button>
-          <label className="cursor-pointer rounded-[10px] border border-line bg-surface px-4 py-2 font-medium">
-            Upload CSV or TSV
+    <Panel title="Open a new case" description="Paste or upload your readings. Messy is fine: mixed units, date formats and missing values are checked next.">
+      <div className="flex flex-col gap-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[14px] border-2 border-dashed border-line p-4 text-center transition-colors hover:border-accent focus-within:border-accent">
+            <span className="font-medium">Upload CSV or TSV</span>
+            <span className="text-xs text-muted">Up to 200 KB, 5000 rows</span>
             <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); }} />
           </label>
+          <button type="button" onClick={() => onSample(1)} className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent">
+            <span className="font-medium">Sample data: week 1</span>
+            <span className="text-xs text-muted">5 Bhopal wards, festival nights</span>
+          </button>
+          <button type="button" onClick={() => onSample(2)} className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent">
+            <span className="font-medium">Sample data: week 2</span>
+            <span className="text-xs text-muted">The follow-up week</span>
+          </button>
         </div>
         <label className="flex flex-col gap-1">
           Paste a table (from a spreadsheet, CSV or report)
           <textarea value={text} rows={10} onChange={(event) => onText(event.target.value)} className="rounded-[10px] border border-line bg-surface p-3 font-mono text-sm" placeholder="Station, Date, Time, PM2.5, PM10" />
         </label>
-        {sourceLabel ? <p className="text-sm text-muted">Loaded: {sourceLabel}</p> : null}
+        {sourceLabel ? <p className="text-sm"><Tag>Loaded</Tag> {sourceLabel}</p> : null}
         <div>
           <Button onClick={onCheck} disabled={busy || !text.trim()}>Check data</Button>
         </div>
@@ -325,15 +352,15 @@ function CheckView({
 }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel title={`Data check: ${repair.flags.length} problems found`}>
+      <Panel title={`Inspector Pawan found ${repair.flags.length} data problems`} description="Found by code, not AI. Each one lists the rows it affects.">
         <p className="mb-2 text-sm text-muted">{repair.rowCount} rows read. {repair.notes}</p>
         {repair.missingFields.length > 0 ? <Warning>Could not find these columns: {repair.missingFields.join(", ")}.</Warning> : null}
         <ul className="flex flex-col gap-3">
           {repair.flags.map((flag, index) => (
             <li key={`${flag.kind}-${index}`} className="border-t border-line pt-2">
-              <p>
-                <span className="font-medium">{flag.kind.replace("_", " ")}</span>{" "}
-                <span className="text-sm text-muted">{flag.effect === "excluded" ? "left out of stats" : "kept, with caution"}</span>
+              <p className="flex flex-wrap items-center gap-2">
+                <span className="font-medium capitalize">{flag.kind.replace("_", " ")}</span>
+                <Tag tone={flag.effect === "excluded" ? "warn" : "plain"}>{flag.effect === "excluded" ? "Left out of stats" : "Kept, with caution"}</Tag>
               </p>
               <p className="text-sm">{flag.detail}</p>
               <RowChips rows={flag.rows} />
@@ -341,7 +368,7 @@ function CheckView({
           ))}
         </ul>
       </Panel>
-      <Panel title="Proposed fixes">
+      <Panel title="Proposed fixes" description="Accept or reject each one. Every change is logged with its rows.">
         {repair.proposals.length === 0 ? <p className="text-muted">No fixes needed.</p> : null}
         <ul className="flex flex-col gap-3">
           {repair.proposals.map((proposal) => (
@@ -373,7 +400,7 @@ function EvidenceView({ result }: { result: BriefResult }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
       <div className="order-2 flex flex-col gap-4 lg:order-1">
-        <Panel title="Proof">
+        <Panel title="Proof" description="Location by time. Each cell shows the reading and its indicative category.">
           <div className="mb-3 flex gap-2" role="group" aria-label="Pollutant">
             {pollutants.map((item) => (
               <button key={item} type="button" aria-pressed={pollutant === item} onClick={() => setPollutant(item)} className={`rounded-full px-3 py-1 text-sm ${pollutant === item ? "bg-accent text-accent-ink" : "border border-line"}`}>
@@ -407,7 +434,7 @@ function EvidenceView({ result }: { result: BriefResult }) {
         </Panel>
       </div>
       <div className="order-1 flex flex-col gap-4 lg:order-2">
-        <Panel title="Evidence">
+        <Panel title="Evidence" description="Hover or select a finding to light up its rows on the grid.">
           <p className="font-medium">{result.headline}</p>
           <p className="mt-1 text-sm">{result.summary}</p>
           <p className="mt-2 text-sm text-muted">{verifiedCount} of {result.findings.length} findings verified against the rows.</p>
@@ -430,15 +457,15 @@ function EvidenceView({ result }: { result: BriefResult }) {
 
 function FindingCard({ finding, onFocus }: { finding: Finding; onFocus: (rows: number[]) => void }) {
   return (
-    <li className="rounded-[14px] border border-line bg-surface p-4" onMouseEnter={() => onFocus(finding.rows)}>
+    <li className={`rounded-[14px] border border-l-4 bg-surface p-4 transition-colors hover:border-accent ${finding.verification.verified ? "border-line border-l-accent" : "border-line border-l-warn"}`} onMouseEnter={() => onFocus(finding.rows)}>
       <button type="button" className="text-left" onClick={() => onFocus(finding.rows)} onFocus={() => onFocus(finding.rows)}>
         <span className="block font-semibold">{finding.title}</span>
       </button>
       <p className="mt-1 text-sm">{finding.detail}</p>
-      <p className="mt-2 flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full border border-line px-2 py-0.5">{finding.verification.verified ? "Verified" : "Unverified"}</span>
-        <span className="rounded-full border border-line px-2 py-0.5">Confidence: {finding.confidence}</span>
-        {finding.location ? <span className="rounded-full border border-line px-2 py-0.5">{finding.location}</span> : null}
+      <p className="mt-2 flex flex-wrap gap-2">
+        <Tag tone={finding.verification.verified ? "ok" : "warn"}>{finding.verification.verified ? "Verified" : "Unverified"}</Tag>
+        <Tag>Confidence: {finding.confidence}</Tag>
+        {finding.location ? <Tag>{finding.location}</Tag> : null}
       </p>
       {finding.verification.verified ? null : <Warning>Not verified: {finding.verification.reasons.join(" ")}</Warning>}
       <RowChips rows={finding.rows} onPick={onFocus} />
@@ -448,7 +475,7 @@ function FindingCard({ finding, onFocus }: { finding: Finding; onFocus: (rows: n
 
 function ActionCard({ action }: { action: CaseAction }) {
   return (
-    <li className="rounded-[14px] border border-line bg-surface p-4">
+    <li className="rounded-[14px] border border-line bg-haze/40 p-4">
       <p className="font-semibold">{action.title}</p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
         <dt className="text-muted">When</dt><dd>{action.when}</dd>
@@ -476,10 +503,10 @@ function PlanView({ actions, rejected }: { actions: CaseAction[]; rejected: Brie
   const others = actions.filter((action) => action.group === "ask_others");
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel title="You can do">
+      <Panel title="You can do" description="Steps within your own control, timed to the computed windows.">
         {own.length === 0 ? <p className="text-muted">No actions passed the checks for this data.</p> : <ul className="flex flex-col gap-3">{own.map((action) => <ActionCard key={`${action.libraryId}-${action.where}`} action={action} />)}</ul>}
       </Panel>
-      <Panel title="Ask others">
+      <Panel title="Ask others" description="Drafted letters, only to the ward office or places you listed.">
         {others.length === 0 ? <p className="text-muted">No letters needed for this data.</p> : <ul className="flex flex-col gap-3">{others.map((action) => <ActionCard key={`${action.libraryId}-${action.where}`} action={action} />)}</ul>}
       </Panel>
       {rejected.length > 0 ? (

@@ -22,14 +22,37 @@ export function Logo({ className }: { className?: string }) {
   );
 }
 
-/** A bordered panel. */
-export function Panel({ title, children, className = "" }: { title?: string; children: ReactNode; className?: string }) {
+/** A bordered panel with an optional title and one-line description. */
+export function Panel({
+  title,
+  description,
+  children,
+  className = "",
+}: {
+  title?: string;
+  description?: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <section className={`rounded-[14px] border border-line bg-surface p-4 ${className}`}>
-      {title ? <h2 className="mb-3 text-[22px] font-semibold">{title}</h2> : null}
-      {children}
+    <section className={`rounded-[14px] border border-line bg-surface p-5 ${className}`}>
+      {title ? <h2 className="text-[22px] font-semibold leading-tight">{title}</h2> : null}
+      {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
+      {title || description ? <div className="mt-4">{children}</div> : children}
     </section>
   );
+}
+
+/** A small working indicator. Static when the user prefers reduced motion. */
+export function Spinner() {
+  return <span aria-hidden className="inline-block h-4 w-4 rounded-full border-2 border-line border-t-accent motion-safe:animate-spin" />;
+}
+
+/** A neutral pill label. `tone` "warn" is for unverified items and data problems. */
+export function Tag({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "warn" | "ok" }) {
+  const style =
+    tone === "warn" ? "bg-warn-bg text-warn" : tone === "ok" ? "bg-accent text-accent-ink" : "border border-line text-muted";
+  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}>{children}</span>;
 }
 
 /** A button. `kind` picks the emphasis. */
@@ -47,9 +70,16 @@ export function Button({
   type?: "button" | "submit";
 }) {
   const style =
-    kind === "primary" ? "bg-accent text-accent-ink" : "border border-line bg-surface text-ink";
+    kind === "primary"
+      ? "bg-accent text-accent-ink hover:brightness-110"
+      : "border border-line bg-surface text-ink hover:border-accent hover:text-accent";
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`rounded-[10px] px-4 py-2 font-medium disabled:opacity-50 ${style}`}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center gap-2 rounded-[10px] px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${style}`}
+    >
       {children}
     </button>
   );
@@ -63,7 +93,7 @@ export function RowChips({ rows, onPick }: { rows: number[]; onPick?: (rows: num
     <ul className="mt-2 flex flex-wrap gap-1" aria-label="Cited rows">
       {shown.map((row) => (
         <li key={row}>
-          <button type="button" onClick={() => onPick?.([row])} className="rounded-full border border-line px-2 py-0.5 text-sm text-muted">
+          <button type="button" onClick={() => onPick?.([row])} className="rounded-full border border-line px-2.5 py-0.5 text-xs tabular-nums text-muted transition-colors hover:border-accent hover:text-accent">
             Row {row}
           </button>
         </li>
@@ -86,5 +116,5 @@ export function AqiBadge({ category, value }: { category: AqiCategory; value: nu
 
 /** A warning line for unverified claims and data problems. */
 export function Warning({ children }: { children: ReactNode }) {
-  return <p className="mt-2 rounded-[10px] bg-warn-bg px-3 py-2 text-sm text-warn">{children}</p>;
+  return <p className="mt-3 rounded-[10px] border-l-4 border-warn bg-warn-bg px-3 py-2 text-sm text-warn">{children}</p>;
 }

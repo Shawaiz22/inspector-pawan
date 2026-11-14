@@ -1,21 +1,28 @@
 import "server-only";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { sha256Hex } from "../data/fingerprint";
 import { LruCache } from "../server/cache";
 import { readServerEnv } from "../server/env";
 import { AiError } from "../server/errors";
 
-/** Per-attempt time limit. Two attempts fit inside the route's maxDuration. */
-export const GEMINI_TIMEOUT_MS = 50_000;
-/** Used when the configured model is overloaded or unavailable. */
-const FALLBACK_MODEL = "gemini-flash-latest";
+/**
+ * Models tried in order, each with its own time limit, all inside the route's
+ * maxDuration. The configured model goes first; the fallbacks cover overload
+ * (503) and slow replies.
+ */
+export const FALLBACK_MODELS: ReadonlyArray<{ model: string; timeoutMs: number }> = [
+  { model: "gemini-3.1-flash-lite", timeoutMs: 30_000 },
+  { model: "gemini-3.5-flash", timeoutMs: 70_000 },
+];
+/** Time limit for the configured model. */
+export const PRIMARY_TIMEOUT_MS = 40_000;
 
 const cache = new LruCache<unknown>(200);
 let client: GoogleGenAI | null = null;
 
 function getClient(apiKey: string): GoogleGenAI {
-  client ??= new GoogleGenAI({ apiKey });
+  client ??= new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1beta" } });
   return client;
 }
 
@@ -31,9 +38,10 @@ export interface JsonRequest<T> {
 }
 
 /**
- * Calls Gemini with JSON schema output and validates the reply with zod.
- * Results are cached by a hash of the input. Tries the configured model, then
- * a fallback model, each with a timeout.
+ * Calls Gemini in JSON mode with the expected JSON Schema in the prompt, and
+ * validates the reply with zod. Strict schema mode is not used because several
+ * Flash models reject its constraints and it makes replies much slower.
+ * Results are cached by a hash of the input.
  * @throws AiError when Gemini is not configured, fails, or returns invalid JSON
  */
 export async function generateJson<T>(request: JsonRequest<T>): Promise<T> {
@@ -45,25 +53,24 @@ export async function generateJson<T>(request: JsonRequest<T>): Promise<T> {
   if (cached !== undefined) return cached as T;
 
   const ai = getClient(env.geminiApiKey);
-  const jsonSchema = z.toJSONSchema(request.schema, { target: "draft-2020-12" });
-  delete (jsonSchema as { $schema?: string }).$schema;
+  const jsonSchema = z.toJSONSchema(request.schema) as Record<string, unknown>;
+  delete jsonSchema.$schema;
   const parts = [
     ...(request.files ?? []).map((file) => ({ inlineData: { data: file.data, mimeType: file.mimeType } })),
-    { text: request.prompt },
+    { text: `${request.prompt}\nReply with JSON only, matching this JSON Schema:\n${JSON.stringify(jsonSchema)}` },
   ];
+  const attempts = [{ model: env.geminiModel, timeoutMs: PRIMARY_TIMEOUT_MS }, ...FALLBACK_MODELS.filter((item) => item.model !== env.geminiModel)];
 
   let failure = "no valid reply";
-  for (const model of [...new Set([env.geminiModel, FALLBACK_MODEL])]) {
+  for (const { model, timeoutMs } of attempts) {
     try {
       const response = await ai.models.generateContent({
         model,
         contents: [{ role: "user", parts }],
         config: {
           responseMimeType: "application/json",
-          responseJsonSchema: jsonSchema,
           temperature: request.temperature,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+          abortSignal: AbortSignal.timeout(timeoutMs),
         },
       });
       const parsed = request.schema.safeParse(JSON.parse(response.text ?? ""));

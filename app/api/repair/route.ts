@@ -11,7 +11,7 @@ import { readTable } from "@/lib/server/pipeline";
 import { RateLimiter } from "@/lib/server/rateLimit";
 import type { ColumnMap, RepairProposal } from "@/lib/types";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 const limiter = new RateLimiter(20, 60_000);
 
