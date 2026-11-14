@@ -26,11 +26,19 @@ function mergeColumns(detected: ColumnMap, ai: ColumnRepairResponse["columns"], 
   return merged;
 }
 
-function toProposals(response: ColumnRepairResponse, rowCount: number): RepairProposal[] {
+/** Key for an operation type, so AI proposals cannot duplicate or contradict a code proposal. */
+function operationKey(op: string, field: string | null): string {
+  return op === "date_order" ? op : `${op}:${field ?? ""}`;
+}
+
+function toProposals(response: ColumnRepairResponse, rowCount: number, codeProposals: RepairProposal[]): RepairProposal[] {
+  const covered = new Set(
+    codeProposals.map((proposal) => operationKey(proposal.operation.op, "field" in proposal.operation ? proposal.operation.field : null)),
+  );
   const proposals: RepairProposal[] = [];
   response.proposals.forEach((item, index) => {
     const rows = item.rows.filter((row) => row <= rowCount);
-    if (rows.length === 0) return;
+    if (rows.length === 0 || covered.has(operationKey(item.op, item.field))) return;
     const base = { id: `ai-${index + 1}`, source: "ai" as const, rows, description: item.description, example: item.example };
     if (item.op === "scale" && item.field && item.factor) {
       proposals.push({ ...base, operation: { op: "scale", field: item.field, factor: item.factor } });
@@ -61,7 +69,7 @@ export function POST(request: Request): Promise<Response> {
         temperature: 0.2,
       });
       columns = mergeColumns(detected, response.columns, table.headers.length);
-      aiProposals = toProposals(response, table.rows.length);
+      aiProposals = toProposals(response, table.rows.length, proposeRepairs(table, columns));
       notes = response.notes;
     } catch {
       if (missingRequiredFields(detected).length > 0) {

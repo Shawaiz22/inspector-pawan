@@ -398,8 +398,8 @@ function EvidenceView({ result }: { result: BriefResult }) {
   const verifiedCount = result.findings.filter((finding) => finding.verification.verified).length;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-      <div className="order-2 flex flex-col gap-4 lg:order-1">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
         <Panel title="Proof" description="Location by time. Each cell shows the reading and its indicative category.">
           <div className="mb-3 flex gap-2" role="group" aria-label="Pollutant">
             {pollutants.map((item) => (
@@ -433,7 +433,7 @@ function EvidenceView({ result }: { result: BriefResult }) {
           )}
         </Panel>
       </div>
-      <div className="order-1 flex flex-col gap-4 lg:order-2">
+      <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
         <Panel title="Evidence" description="Hover or select a finding to light up its rows on the grid.">
           <p className="font-medium">{result.headline}</p>
           <p className="mt-1 text-sm">{result.summary}</p>
