@@ -45,16 +45,16 @@ function copy(text: string): void {
 }
 
 /** The workspace app. Rendered on the client only, so it can read localStorage on first render. */
-export default function App() {
+export default function App({ onLock }: { onLock?: () => Promise<void> } = {}) {
   return (
     <BootProvider>
       <BootSplash logo={<Logo className="h-20 w-20 text-accent" />} name="Inspector Pawan" tagline="Every air reading investigated." />
-      <Workspace />
+      <Workspace onLock={onLock} />
     </BootProvider>
   );
 }
 
-function Workspace() {
+function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
   const [workspace, setWorkspace] = useState<StoredWorkspace | null>(() => loadJson<StoredWorkspace | null>(WORKSPACE_KEY, null));
   const [editing, setEditing] = useState(false);
   const [caseCount, setCaseCount] = useState(() => loadJson<number>(CASE_KEY, 0));
@@ -187,6 +187,11 @@ function Workspace() {
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
               {workspace.id ? null : <Tag tone="warn">Saved in this browser only</Tag>}
               <Button kind="quiet" onClick={() => setEditing(true)}>Settings</Button>
+              {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button> : null}
+            </div>
+          ) : onLock ? (
+            <div className="flex items-center gap-2 text-sm">
+              <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button>
             </div>
           ) : null}
         </div>
