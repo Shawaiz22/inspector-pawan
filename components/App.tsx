@@ -314,7 +314,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
               <span>Loading workspaces…</span>
             </div>
           ) : workspace && !editing ? (
-            <div className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0">
+            <div className="flex items-center gap-2 text-sm shrink-0">
               <WorkspaceSelector
                 currentWorkspace={{
                   id: workspace.id,
@@ -351,32 +351,88 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                   setEditing(false);
                 }}
               />
-              <Button
-                kind="quiet"
+              <button
+                type="button"
                 onClick={() => {
                   setCreatingNew(true);
                   setEditing(false);
                 }}
+                title="Create a new workspace"
+                className="inline-flex items-center gap-1 rounded-[10px] px-2 py-1.5 text-xs font-medium text-muted hover:text-ink hover:bg-haze transition-colors"
               >
-                + New workspace
-              </Button>
-              {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
+                <svg className="h-3.5 w-3.5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span className="hidden sm:inline">New</span>
+              </button>
+
+              <div className="h-4 w-px bg-line" aria-hidden />
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(true);
+                  setCreatingNew(false);
+                }}
+                title="Workspace settings"
+                className="inline-flex items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-xs font-medium text-muted hover:text-ink hover:bg-haze transition-colors"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                <span className="hidden sm:inline">Settings</span>
+              </button>
+
+              <div className="h-4 w-px bg-line" aria-hidden />
+
               {userEmail && userEmail !== "authorized" ? (
-                <span title={userEmail} className="hidden md:inline-block max-w-[130px] truncate">
-                  <Tag tone="plain">{userEmail}</Tag>
-                </span>
+                <div title={`Signed in as ${userEmail}`} className="flex items-center gap-1.5 text-xs text-muted">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 font-semibold text-accent text-[11px]">
+                    {userEmail.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="hidden xl:inline-block max-w-[120px] truncate">{userEmail}</span>
+                </div>
               ) : null}
-              <Button kind="quiet" onClick={() => { setEditing(true); setCreatingNew(false); }}>Settings</Button>
-              {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock</Button> : null}
+
+              {onLock ? (
+                <button
+                  type="button"
+                  onClick={() => void onLock()}
+                  title="Lock workspace"
+                  className="inline-flex items-center gap-1 rounded-[10px] px-2 py-1.5 text-xs font-medium text-muted hover:text-warn hover:bg-warn-bg/40 transition-colors"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <span className="hidden sm:inline">Lock</span>
+                </button>
+              ) : null}
             </div>
           ) : onLock ? (
             <div className="flex items-center gap-2 text-sm shrink-0">
               {userEmail && userEmail !== "authorized" ? (
-                <span title={userEmail} className="hidden md:inline-block max-w-[130px] truncate">
-                  <Tag tone="plain">{userEmail}</Tag>
-                </span>
+                <div title={`Signed in as ${userEmail}`} className="flex items-center gap-1.5 text-xs text-muted">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/20 font-semibold text-accent text-[11px]">
+                    {userEmail.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="hidden xl:inline-block max-w-[120px] truncate">{userEmail}</span>
+                </div>
               ) : null}
-              <Button kind="quiet" onClick={() => void onLock()}>Lock</Button>
+              <button
+                type="button"
+                onClick={() => void onLock()}
+                title="Lock workspace"
+                className="inline-flex items-center gap-1 rounded-[10px] px-2 py-1.5 text-xs font-medium text-muted hover:text-warn hover:bg-warn-bg/40 transition-colors"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span className="hidden sm:inline">Lock</span>
+              </button>
             </div>
           ) : null}
         </div>
