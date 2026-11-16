@@ -304,50 +304,51 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           </div>
           {workspace && !editing ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              {userWorkspaces.length > 1 ? (
-                <select
-                  aria-label="Switch workspace"
-                  value={workspace.id ?? ""}
-                  onChange={(e) => {
-                    const chosenId = e.target.value;
-                    if (chosenId === "new") {
-                      setEditing(true);
-                      return;
-                    }
-                    const target = userWorkspaces.find((w) => w.id === chosenId);
-                    if (target) {
-                      const stored: StoredWorkspace = {
-                        profile: {
-                          role: target.role,
-                          name: target.name,
-                          roleNote: target.roleNote,
-                          places: target.places,
-                          ownerEmail: userEmail,
-                        },
-                        id: target.id,
-                        token: null,
-                      };
-                      saveJson(WORKSPACE_KEY, stored);
-                      setWorkspace(stored);
-                      setResult(null);
-                      setRepair(null);
-                      setText("");
-                      setView("upload");
-                    }
-                  }}
-                  className="rounded-[10px] border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink focus:border-accent focus:outline-none"
-                >
-                  {userWorkspaces.map((w) => (
+              <select
+                aria-label="Switch workspace"
+                value={workspace.id ?? "current"}
+                onChange={(e) => {
+                  const chosenId = e.target.value;
+                  if (chosenId === "new") {
+                    setEditing(true);
+                    return;
+                  }
+                  const target = userWorkspaces.find((w) => w.id === chosenId);
+                  if (target) {
+                    const stored: StoredWorkspace = {
+                      profile: {
+                        role: target.role,
+                        name: target.name,
+                        roleNote: target.roleNote,
+                        places: target.places,
+                        ownerEmail: userEmail,
+                      },
+                      id: target.id,
+                      token: null,
+                    };
+                    saveJson(WORKSPACE_KEY, stored);
+                    setWorkspace(stored);
+                    setResult(null);
+                    setRepair(null);
+                    setText("");
+                    setView("upload");
+                  }
+                }}
+                className="rounded-[10px] border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink focus:border-accent focus:outline-none cursor-pointer"
+              >
+                {userWorkspaces.length > 0 ? (
+                  userWorkspaces.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} ({rolePreset(w.role).label})
                     </option>
-                  ))}
-                  <option value="new">+ Create workspace</option>
-                </select>
-              ) : (
-                <span className="font-medium">{workspace.profile.name}</span>
-              )}
-              {userWorkspaces.length <= 1 ? <Tag>{rolePreset(workspace.profile.role).label}</Tag> : null}
+                  ))
+                ) : (
+                  <option value={workspace.id ?? "current"}>
+                    {workspace.profile.name} ({rolePreset(workspace.profile.role).label})
+                  </option>
+                )}
+                <option value="new">+ Create workspace</option>
+              </select>
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
               {userEmail && userEmail !== "authorized" ? (
                 <Tag tone="plain">{userEmail}</Tag>
