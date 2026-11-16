@@ -294,18 +294,18 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
   return (
     <div className="flex flex-1 flex-col">
       <header className="no-print sticky top-0 z-30 border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <BrandMark slot="header" className="h-10 w-10 text-accent">
-              <Logo className="h-10 w-10 text-accent" />
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <BrandMark slot="header" className="h-9 w-9 text-accent shrink-0">
+              <Logo className="h-9 w-9 text-accent" />
             </BrandMark>
-            <div>
-              <h1 className="text-[22px] font-semibold leading-tight">Inspector Pawan</h1>
-              <p className="text-xs text-muted">Every air reading investigated. Every action followed up.</p>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-[22px] font-semibold leading-tight truncate">Inspector Pawan</h1>
+              <p className="hidden sm:block text-xs text-muted truncate">Every air reading investigated. Every action followed up.</p>
             </div>
           </div>
           {workspace && !editing ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0">
               <WorkspaceSelector
                 currentWorkspace={{
                   id: workspace.id,
@@ -351,15 +351,21 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
               </Button>
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
               {userEmail && userEmail !== "authorized" ? (
-                <Tag tone="plain">{userEmail}</Tag>
+                <span title={userEmail} className="hidden md:inline-block max-w-[130px] truncate">
+                  <Tag tone="plain">{userEmail}</Tag>
+                </span>
               ) : null}
               <Button kind="quiet" onClick={() => { setEditing(true); setCreatingNew(false); }}>Settings</Button>
-              {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button> : null}
+              {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock</Button> : null}
             </div>
           ) : onLock ? (
-            <div className="flex items-center gap-2 text-sm">
-              {userEmail && userEmail !== "authorized" ? <Tag tone="plain">{userEmail}</Tag> : null}
-              <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button>
+            <div className="flex items-center gap-2 text-sm shrink-0">
+              {userEmail && userEmail !== "authorized" ? (
+                <span title={userEmail} className="hidden md:inline-block max-w-[130px] truncate">
+                  <Tag tone="plain">{userEmail}</Tag>
+                </span>
+              ) : null}
+              <Button kind="quiet" onClick={() => void onLock()}>Lock</Button>
             </div>
           ) : null}
         </div>

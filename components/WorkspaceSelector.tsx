@@ -69,11 +69,17 @@ export function WorkspaceSelector({
           </svg>
         </span>
 
-        <span className="max-w-[160px] truncate text-ink font-semibold">
+        <span
+          title={currentWorkspace.name}
+          className="max-w-[120px] sm:max-w-[140px] truncate text-ink font-semibold"
+        >
           {currentWorkspace.name}
         </span>
 
-        <span className="rounded-full bg-haze px-2 py-0.5 text-xs text-muted font-normal">
+        <span
+          title={activeRole.label}
+          className="hidden sm:inline-block max-w-[85px] truncate rounded-full bg-haze px-1.5 py-0.5 text-xs text-muted font-normal"
+        >
           {activeRole.label}
         </span>
 
