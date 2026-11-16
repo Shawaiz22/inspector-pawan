@@ -412,18 +412,24 @@ export async function ensureAccessCodeTable(sql: Sql): Promise<void> {
   );
 }
 
-/** Inserts a new access code record. */
+/** Inserts a new access code record, deactivating previous codes for this email. */
 export async function insertAccessCode(
   sql: Sql,
   input: { email: string; codeHash: string; codePrefix: string; metadata?: Record<string, unknown> },
 ): Promise<AccessCodeRecord> {
   await ensureAccessCodeTable(sql);
+  const normalizedEmail = input.email.toLowerCase().trim();
+  await run(
+    sql,
+    "UPDATE access_codes SET is_active = false, revoked_at = now() WHERE LOWER(email) = $1 AND is_active = true",
+    [normalizedEmail],
+  );
   const rows = await run<AccessCodeRecord>(
     sql,
     `INSERT INTO access_codes (email, code_hash, code_prefix, metadata)
      VALUES ($1, $2, $3, $4::jsonb)
      RETURNING *`,
-    [input.email.toLowerCase().trim(), input.codeHash, input.codePrefix, JSON.stringify(input.metadata ?? {})],
+    [normalizedEmail, input.codeHash, input.codePrefix, JSON.stringify(input.metadata ?? {})],
   );
   return rows[0];
 }

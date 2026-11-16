@@ -90,6 +90,26 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
     void listUserWorkspaces().then((list) => {
       if (!mounted) return;
       setUserWorkspaces(list);
+      setWorkspace((current) => {
+        if (current) return current;
+        if (list.length > 0) {
+          const first = list[0];
+          const stored: StoredWorkspace = {
+            profile: {
+              role: first.role,
+              name: first.name,
+              roleNote: first.roleNote,
+              places: first.places,
+              ownerEmail: userEmail,
+            },
+            id: first.id,
+            token: null,
+          };
+          saveJson(WORKSPACE_KEY, stored);
+          return stored;
+        }
+        return null;
+      });
     });
     return () => {
       mounted = false;

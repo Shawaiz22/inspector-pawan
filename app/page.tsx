@@ -108,7 +108,10 @@ async function requestAccessCode(
   const code = generateAccessCode();
   const codeHash = crypto.createHash("sha256").update(code).digest("hex");
 
-  // Keep in memory fallback cache
+  // Evict older codes for this email in memory cache
+  for (const [hash, entry] of memoryCodes.entries()) {
+    if (entry.email === email) memoryCodes.delete(hash);
+  }
   memoryCodes.set(codeHash, { email, createdAt: Date.now() });
 
   // Persist in Neon database if configured
