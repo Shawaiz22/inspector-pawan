@@ -149,11 +149,49 @@ describe("POST /api/brief", () => {
     expect(statuses.slice(10)).toEqual([429, 429]);
   });
 
-  it("requires the workspace token when a workspace id is given", async () => {
+  it("requires the workspace token when a workspace id is given without auth", async () => {
     getSql.mockReturnValue({ query: async () => [] });
     const { POST } = await import("@/app/api/brief/route");
     const response = await POST(post("/api/brief", { text: readSample("week1"), workspace, workspaceId: "5b0e3f6a-1d2c-4e8f-9a7b-3c4d5e6f7a8b" }));
     expect(response.status).toBe(401);
+  });
+
+  it("authorizes via owner session cookie when workspace id is given", async () => {
+    const { encodeSessionToken } = await import("@/lib/server/session");
+    const sessionCookie = encodeSessionToken("user@example.com");
+    getSql.mockReturnValue({
+      query: async (text: string) => {
+        if (text.includes("SELECT") && text.includes("workspaces")) {
+          return [
+            {
+              id: "5b0e3f6a-1d2c-4e8f-9a7b-3c4d5e6f7a8b",
+              token_hash: "dummyhash",
+              role: "school",
+              name: "Kolar school",
+              role_note: null,
+              places: [],
+              owner_email: "user@example.com",
+              created_at: new Date().toISOString(),
+            },
+          ];
+        }
+        if (text.includes("INSERT INTO briefs")) {
+          return [{ id: "brief-123", created_at: new Date().toISOString() }];
+        }
+        return [];
+      },
+    });
+    const { POST } = await import("@/app/api/brief/route");
+    const response = await POST(
+      post(
+        "/api/brief",
+        { text: readSample("week1"), workspace, workspaceId: "5b0e3f6a-1d2c-4e8f-9a7b-3c4d5e6f7a8b" },
+        { cookie: `pawan_access=${sessionCookie}` },
+      ),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.briefId).toBe("brief-123");
   });
 });
 

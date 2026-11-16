@@ -52,9 +52,25 @@ export function decodeSessionToken(token: string | undefined): { email: string }
   return null;
 }
 
-/** Reads the current session from incoming request cookies. */
-export async function getActiveSession(): Promise<{ email: string } | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(GATE_COOKIE)?.value;
-  return decodeSessionToken(token);
+/** Decodes session from a raw cookie header string. */
+export function decodeSessionCookie(cookieHeader: string | null | undefined): { email: string } | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${GATE_COOKIE}=([^;]+)`));
+  if (!match || !match[1]) return null;
+  return decodeSessionToken(decodeURIComponent(match[1]));
+}
+
+/** Reads the current session from incoming request cookies or the next/headers cookie store. */
+export async function getActiveSession(request?: Request): Promise<{ email: string } | null> {
+  if (request) {
+    const fromHeader = decodeSessionCookie(request.headers.get("cookie"));
+    if (fromHeader) return fromHeader;
+  }
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(GATE_COOKIE)?.value;
+    return decodeSessionToken(token);
+  } catch {
+    return null;
+  }
 }

@@ -43,6 +43,7 @@ interface StoredWorkspace {
 }
 
 const WORKSPACE_KEY = "pawan-workspace";
+const TOKENS_KEY = "pawan-workspace-tokens";
 const PREVIOUS_KEY = "pawan-previous";
 const CASE_KEY = "pawan-case-count";
 
@@ -114,6 +115,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           ? list.find((w) => w.id === current.id || w.name.toLowerCase() === current.profile.name.toLowerCase())
           : null;
         const chosen = match || list[0];
+        const tokens = loadJson<Record<string, string>>(TOKENS_KEY, {});
+        const token = current?.id === chosen.id && current?.token ? current.token : (tokens[chosen.id] ?? null);
         const stored: StoredWorkspace = {
           profile: {
             role: chosen.role,
@@ -123,7 +126,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
             ownerEmail: userEmail,
           },
           id: chosen.id,
-          token: null,
+          token,
         };
         saveJson(WORKSPACE_KEY, stored);
         setWorkspace(stored);
@@ -132,6 +135,11 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
         try {
           const saved = await saveWorkspaceForUser({ ...current.profile, ownerEmail: userEmail });
           if (saved?.id && mounted) {
+            if (saved.token) {
+              const tokens = loadJson<Record<string, string>>(TOKENS_KEY, {});
+              tokens[saved.id] = saved.token;
+              saveJson(TOKENS_KEY, tokens);
+            }
             const synced: StoredWorkspace = {
               ...current,
               id: saved.id,
@@ -209,6 +217,11 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
       }
       return postJson<{ id: string; token: string }>("/api/workspace", profileWithOwner, { signal }).catch(() => null);
     });
+    if (created?.id && created?.token) {
+      const tokens = loadJson<Record<string, string>>(TOKENS_KEY, {});
+      tokens[created.id] = created.token;
+      saveJson(TOKENS_KEY, tokens);
+    }
     const stored: StoredWorkspace = { profile: profileWithOwner, id: created?.id ?? null, token: created?.token ?? null };
     saveJson(WORKSPACE_KEY, stored);
     setWorkspace(stored);
@@ -327,6 +340,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                   if (target) {
                     setCases([]);
                     setLoadingCases(true);
+                    const tokens = loadJson<Record<string, string>>(TOKENS_KEY, {});
+                    const token = tokens[target.id] ?? (workspace?.id === target.id ? workspace.token : null);
                     const stored: StoredWorkspace = {
                       profile: {
                         role: target.role,
@@ -336,7 +351,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                         ownerEmail: userEmail,
                       },
                       id: target.id,
-                      token: null,
+                      token,
                     };
                     saveJson(WORKSPACE_KEY, stored);
                     setWorkspace(stored);

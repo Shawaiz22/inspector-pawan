@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { getSql, findWorkspace, type WorkspaceRecord } from "./db";
 import { AuthError, NotFoundError, PayloadTooLargeError, StorageError, toHttpError, ValidationError } from "./errors";
 import { clientIp, type RateLimiter } from "./rateLimit";
+import { getActiveSession } from "./session";
 import { tokenMatches } from "./token";
 
 /** Default request body limit (text table plus metadata). */
@@ -37,16 +38,36 @@ export async function handle(request: Request, limiter: RateLimiter, run: () => 
 }
 
 /**
- * Loads a workspace and checks the x-workspace-token header in constant time.
- * @throws StorageError without a database, AuthError on a bad token
+ * Loads a workspace and authorizes via active owner session or the x-workspace-token header.
+ * @throws StorageError without a database, AuthError on a bad token or unauthorized access
  */
 export async function authorizeWorkspace(request: Request, workspaceId: string): Promise<WorkspaceRecord> {
   const sql = getSql();
   if (!sql) throw new StorageError();
+
   const token = request.headers.get("x-workspace-token");
-  if (!token) throw new AuthError();
+  const session = await getActiveSession(request);
+
+  if (!token && !session?.email) {
+    throw new AuthError();
+  }
+
   const workspace = await findWorkspace(sql, workspaceId);
   if (!workspace) throw new NotFoundError("This workspace does not exist.");
-  if (!tokenMatches(token, workspace.token_hash)) throw new AuthError();
-  return workspace;
+
+  // Check 1: Session owner check (authenticated user owns this workspace)
+  if (
+    session?.email &&
+    (session.email === "authorized" ||
+      (workspace.owner_email && session.email.toLowerCase() === workspace.owner_email.toLowerCase()))
+  ) {
+    return workspace;
+  }
+
+  // Check 2: Direct workspace token (header match in constant time)
+  if (token && tokenMatches(token, workspace.token_hash)) {
+    return workspace;
+  }
+
+  throw new AuthError();
 }
