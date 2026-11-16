@@ -83,6 +83,7 @@ export default function App({
 function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEmail?: string }) {
   const [workspace, setWorkspace] = useState<StoredWorkspace | null>(() => loadJson<StoredWorkspace | null>(WORKSPACE_KEY, null));
   const [userWorkspaces, setUserWorkspaces] = useState<UserWorkspaceSummary[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(true);
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -145,6 +146,9 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           // ignore network failure, fallback kept
         }
       }
+      if (mounted) setLoadingInitial(false);
+    }).catch(() => {
+      if (mounted) setLoadingInitial(false);
     });
     return () => {
       mounted = false;
@@ -374,7 +378,14 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
 
       <div aria-live="polite" className="sr-only">{announce}</div>
 
-      {!workspace || editing || creatingNew ? (
+      {loadingInitial && !workspace ? (
+        <div className="flex flex-1 items-center justify-center py-20 text-ink">
+          <div className="flex flex-col items-center gap-3">
+            <Spinner />
+            <p className="text-sm text-muted">Loading your workspace…</p>
+          </div>
+        </div>
+      ) : !workspace || editing || creatingNew ? (
         <SetupForm
           initial={creatingNew ? null : (workspace?.profile ?? null)}
           onSave={(profile) => {
