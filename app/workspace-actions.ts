@@ -1,6 +1,6 @@
 "use server";
 
-import type { BriefResult, Profile } from "@/lib/api/types";
+import type { BriefResult, PlaceEntry, Profile } from "@/lib/api/types";
 import {
   findFullCaseBrief,
   getSql,
@@ -17,7 +17,7 @@ export interface UserWorkspaceSummary {
   role: Profile["role"];
   name: string;
   roleNote: string | null;
-  places: string[];
+  places: PlaceEntry[];
   createdAt: string;
 }
 

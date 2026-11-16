@@ -1,5 +1,6 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import type { PlaceEntry } from "../places";
 import type { BriefSnapshot, CaseAction, Finding, LocationStats, LocalHotspot, NormalizedRow, RepairLogEntry, Role } from "../types";
 import type { BriefResult } from "../api/types";
 import { readServerEnv } from "./env";
@@ -33,7 +34,7 @@ export interface WorkspaceRecord {
   role: Role;
   name: string;
   role_note: string | null;
-  places: string[];
+  places: PlaceEntry[];
   created_at: string;
 }
 
@@ -68,7 +69,7 @@ export async function ensureWorkspacesTable(sql: Sql): Promise<void> {
 /** Inserts a workspace and returns its id. */
 export async function insertWorkspace(
   sql: Sql,
-  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: string[]; ownerEmail?: string | null },
+  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: PlaceEntry[]; ownerEmail?: string | null },
 ): Promise<string> {
   const rows = await run<{ id: string }>(
     sql,
@@ -101,7 +102,7 @@ export async function findWorkspace(sql: Sql, id: string): Promise<WorkspaceReco
 export async function updateWorkspace(
   sql: Sql,
   id: string,
-  input: { role?: Role; name?: string; roleNote?: string | null; places?: string[] },
+  input: { role?: Role; name?: string; roleNote?: string | null; places?: PlaceEntry[] },
 ): Promise<WorkspaceRecord | null> {
   const rows = await run<WorkspaceRecord>(
     sql,

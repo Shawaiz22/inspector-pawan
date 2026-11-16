@@ -1,4 +1,5 @@
 import { POLLUTANT_LABELS } from "../data/naqi";
+import { placePromptDescription, type PlaceEntry } from "../places";
 import { rolePreset, WARD_OFFICE } from "../roles";
 import type { ColumnMap, DatasetAnalysis, LibraryAction, QualityFlag, RawTable, RepairProposal, Role } from "../types";
 
@@ -70,7 +71,7 @@ export interface BriefPromptInput {
   role: Role;
   roleNote: string | null;
   area: string;
-  places: string[];
+  places: PlaceEntry[];
   library: LibraryAction[];
   changes: unknown;
 }
@@ -79,6 +80,7 @@ export interface BriefPromptInput {
 export function briefPrompt(input: BriefPromptInput): string {
   const preset = rolePreset(input.role);
   const { analysis } = input;
+  const placesForAi = input.places.map(placePromptDescription);
   return `You are writing an evidence brief about air quality for a ${preset.label.toLowerCase()} (${input.area}). ${RULES}
 Hourly categories are indicative because NAQI uses 24-hour averages; say so when you use them.
 Findings (max 6): trends, likely hotspots, citywide events, important data gaps and the worst or cleanest windows.
@@ -88,7 +90,7 @@ target is the location, daily window (startHour, endHour from the computed windo
 For library entries with "asks", draft a short polite letter: "ward_office" letters go to "${WARD_OFFICE}"; "nearby_place" letters go to one of the listed places only. Skip those entries if no listed place fits.
 Actions with needs "event" only apply when there are citywide events; "local" only for locations with a hotspot or a Poor-or-worse window.
 ${dataBlock("role", { role: preset.label, roleNote: input.roleNote, controls: preset.controls })}
-${dataBlock("listed_places", input.places)}
+${dataBlock("listed_places", placesForAi)}
 ${dataBlock("period", { start: analysis.periodStart, end: analysis.periodEnd, locations: analysis.locations, rows: analysis.rowCount })}
 ${dataBlock("stats", statsSummary(analysis))}
 ${dataBlock("citywide_events", analysis.events.map((event) => ({ ...event, rows: clip(event.rows) })))}
