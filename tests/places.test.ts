@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizePlace,
-  placeName,
   placePromptDescription,
   rolePlacePlaceholder,
   toEmailAddress,

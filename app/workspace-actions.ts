@@ -2,6 +2,7 @@
 
 import type { BriefResult, PlaceEntry, Profile } from "@/lib/api/types";
 import {
+  ensureWorkspacesTable,
   findFullCaseBrief,
   getSql,
   insertWorkspace,
@@ -30,6 +31,7 @@ export async function listUserWorkspaces(): Promise<UserWorkspaceSummary[]> {
   if (!sql) return [];
 
   try {
+    await ensureWorkspacesTable(sql);
     const records = await listWorkspacesByOwner(sql, session.email);
     return records.map((w) => ({
       id: w.id,
@@ -80,6 +82,12 @@ export async function saveWorkspaceForUser(
 
   const sql = getSql();
   if (!sql) return { id: null, token: null };
+
+  try {
+    await ensureWorkspacesTable(sql);
+  } catch {
+    // ignore
+  }
 
   const token = createToken();
   const id = await insertWorkspace(sql, {
