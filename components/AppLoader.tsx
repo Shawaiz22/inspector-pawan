@@ -8,6 +8,6 @@ const App = dynamic(() => import("./App"), {
 });
 
 /** Loads the workspace app on the client only, since it reads saved work from this browser. */
-export function AppLoader({ onLock }: { onLock?: () => Promise<void> }) {
-  return <App onLock={onLock} />;
+export function AppLoader({ onLock, userEmail }: { onLock?: () => Promise<void>; userEmail?: string }) {
+  return <App onLock={onLock} userEmail={userEmail} />;
 }

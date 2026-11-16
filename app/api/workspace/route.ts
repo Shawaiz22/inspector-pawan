@@ -26,6 +26,7 @@ export function POST(request: Request): Promise<Response> {
       name: profile.name,
       roleNote: profile.roleNote,
       places: profile.places,
+      ownerEmail: profile.ownerEmail ?? null,
     });
     return Response.json({ id, token }, { status: 201 });
   });

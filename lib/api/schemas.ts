@@ -12,6 +12,7 @@ export const workspaceProfile = z.object({
   name: z.string().trim().min(1).max(120),
   roleNote: z.string().trim().max(ROLE_NOTE_MAX).nullable().default(null),
   places: z.array(place).max(10).default([]),
+  ownerEmail: z.string().trim().email().nullable().optional(),
 });
 
 /** POST /api/workspace */

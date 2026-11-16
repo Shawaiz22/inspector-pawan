@@ -9,8 +9,8 @@ import { AppLoader } from "@/components/AppLoader";
 import { findActiveAccessCode, getSql, insertAccessCode, touchAccessCode } from "@/lib/server/db";
 import { sendAccessCodeEmail } from "@/lib/server/email";
 import { RateLimiter } from "@/lib/server/rateLimit";
+import { decodeSessionToken, encodeSessionToken, GATE_COOKIE } from "@/lib/server/session";
 
-const GATE_COOKIE = "pawan_access";
 const DEFAULT_CODE = "PAWAN2026";
 const requestLimiter = new RateLimiter(5, 10 * 60 * 1000);
 const memoryCodes = new Map<string, { email: string; createdAt: number }>();
@@ -18,20 +18,6 @@ const memoryCodes = new Map<string, { email: string; createdAt: number }>();
 function getExpectedMasterCode(): string {
   const code = process.env.APP_ACCESS_CODE || process.env.ACCESS_CODE || DEFAULT_CODE;
   return code.trim().toUpperCase();
-}
-
-function computeSessionToken(): string {
-  const secret = process.env.APP_ACCESS_CODE || process.env.ACCESS_CODE || "pawan-salt-gate-2026";
-  return crypto.createHmac("sha256", secret).update("pawan-access-granted").digest("hex");
-}
-
-function isAuthorized(token: string | undefined): boolean {
-  if (!token) return false;
-  const expectedToken = computeSessionToken();
-  const tokenBuf = Buffer.from(token);
-  const expectedBuf = Buffer.from(expectedToken);
-  if (tokenBuf.length !== expectedBuf.length) return false;
-  return crypto.timingSafeEqual(tokenBuf, expectedBuf);
 }
 
 function generateAccessCode(): string {
@@ -50,12 +36,14 @@ async function unlock(code: string): Promise<{ success: boolean; error?: string 
   const master = getExpectedMasterCode();
 
   let valid = false;
+  let userEmail = "authorized";
 
   // 1. Check against master deployment access code
   const candidateBuf = Buffer.from(candidate);
   const masterBuf = Buffer.from(master);
   if (candidateBuf.length === masterBuf.length && crypto.timingSafeEqual(candidateBuf, masterBuf)) {
     valid = true;
+    userEmail = "administrator";
   }
 
   // 2. Check active codes in database or in-memory fallback
@@ -67,14 +55,18 @@ async function unlock(code: string): Promise<{ success: boolean; error?: string 
         const record = await findActiveAccessCode(sql, codeHash);
         if (record) {
           valid = true;
+          userEmail = record.email;
           await touchAccessCode(sql, record.id).catch(() => undefined);
         }
       } catch {
-        // Fall back to memory map if DB is temporarily unreachable
-        if (memoryCodes.has(codeHash)) valid = true;
+        if (memoryCodes.has(codeHash)) {
+          valid = true;
+          userEmail = memoryCodes.get(codeHash)!.email;
+        }
       }
     } else if (memoryCodes.has(codeHash)) {
       valid = true;
+      userEmail = memoryCodes.get(codeHash)!.email;
     }
   }
 
@@ -82,7 +74,7 @@ async function unlock(code: string): Promise<{ success: boolean; error?: string 
     return { success: false, error: "Incorrect or inactive access code. Please request a new one." };
   }
 
-  const sessionToken = computeSessionToken();
+  const sessionToken = encodeSessionToken(userEmail);
   const store = await cookies();
   store.set(GATE_COOKIE, sessionToken, {
     httpOnly: true,
@@ -157,9 +149,9 @@ async function GatedContent() {
   await connection();
   const cookieStore = await cookies();
   const token = cookieStore.get(GATE_COOKIE)?.value;
-  const authorized = isAuthorized(token);
+  const session = decodeSessionToken(token);
 
-  if (!authorized) {
+  if (!session) {
     return (
       <main className="flex flex-1 flex-col items-center justify-center p-4">
         <AccessGate onUnlock={unlock} onRequestCode={requestAccessCode} />
@@ -169,7 +161,7 @@ async function GatedContent() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <AppLoader onLock={lock} />
+      <AppLoader onLock={lock} userEmail={session.email} />
     </main>
   );
 }

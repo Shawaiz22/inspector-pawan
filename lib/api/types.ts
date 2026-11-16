@@ -19,6 +19,7 @@ export interface Profile {
   name: string;
   roleNote: string | null;
   places: string[];
+  ownerEmail?: string | null;
 }
 
 /** Response of POST /api/repair. */

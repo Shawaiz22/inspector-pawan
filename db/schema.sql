@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS workspaces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_email text,
   token_hash text NOT NULL,
   role text NOT NULL,
   name text NOT NULL,
@@ -9,6 +10,8 @@ CREATE TABLE IF NOT EXISTS workspaces (
   places jsonb NOT NULL DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS workspaces_owner_email_idx ON workspaces (owner_email);
 
 CREATE TABLE IF NOT EXISTS briefs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

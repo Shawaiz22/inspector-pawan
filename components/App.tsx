@@ -1,12 +1,19 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  listUserWorkspaces,
+  listWorkspaceCases,
+  loadHistoricalCase,
+  type UserWorkspaceSummary,
+} from "@/app/workspace-actions";
 import type { AdvisoryResult, BriefResult, NoticeContent, Profile, RepairResult } from "@/lib/api/types";
 import { ApiFailure, postJson } from "@/lib/client/api";
 import { cleanedRowsCsv, downloadText } from "@/lib/client/download";
 import { loadJson, saveJson } from "@/lib/client/storage";
 import { categoryRank, POLLUTANT_LABELS } from "@/lib/data/naqi";
 import { ROLE_NOTE_MAX, ROLE_PRESETS, rolePreset } from "@/lib/roles";
+import type { CaseSummary } from "@/lib/server/db";
 import type { BriefSnapshot, CaseAction, Finding, Pollutant, Role } from "@/lib/types";
 import { BootProvider, BootSplash, BrandMark } from "./BootSplash";
 import { HeatGrid } from "./HeatGrid";
@@ -45,17 +52,26 @@ function copy(text: string): void {
 }
 
 /** The workspace app. Rendered on the client only, so it can read localStorage on first render. */
-export default function App({ onLock }: { onLock?: () => Promise<void> } = {}) {
+export default function App({
+  onLock,
+  userEmail,
+}: {
+  onLock?: () => Promise<void>;
+  userEmail?: string;
+} = {}) {
   return (
     <BootProvider>
       <BootSplash logo={<Logo className="h-20 w-20 text-accent" />} name="Inspector Pawan" tagline="Every air reading investigated." />
-      <Workspace onLock={onLock} />
+      <Workspace onLock={onLock} userEmail={userEmail} />
     </BootProvider>
   );
 }
 
-function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
+function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEmail?: string }) {
   const [workspace, setWorkspace] = useState<StoredWorkspace | null>(() => loadJson<StoredWorkspace | null>(WORKSPACE_KEY, null));
+  const [userWorkspaces, setUserWorkspaces] = useState<UserWorkspaceSummary[]>([]);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [loadingCases, setLoadingCases] = useState(false);
   const [editing, setEditing] = useState(false);
   const [caseCount, setCaseCount] = useState(() => loadJson<number>(CASE_KEY, 0));
   const [view, setView] = useState<View>("upload");
@@ -68,6 +84,39 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
   const [error, setError] = useState("");
   const [announce, setAnnounce] = useState("");
   const controller = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void listUserWorkspaces().then((list) => {
+      if (!mounted) return;
+      setUserWorkspaces(list);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [userEmail]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (workspace?.id) {
+      void listWorkspaceCases(workspace.id)
+        .then((data) => {
+          if (mounted) {
+            setCases(data);
+            if (data.length > 0) {
+              setCaseCount(data[0].caseNumber);
+              saveJson(CASE_KEY, data[0].caseNumber);
+            }
+          }
+        })
+        .finally(() => {
+          if (mounted) setLoadingCases(false);
+        });
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [workspace?.id]);
 
   async function run<T>(label: string, task: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
     controller.current?.abort();
@@ -91,15 +140,28 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
   }
 
   async function saveProfile(profile: Profile) {
+    const profileWithOwner = { ...profile, ownerEmail: userEmail };
     const created = await run("Saving your workspace", (signal) =>
-      postJson<{ id: string; token: string }>("/api/workspace", profile, { signal }).catch(() => null),
+      postJson<{ id: string; token: string }>("/api/workspace", profileWithOwner, { signal }).catch(() => null),
     );
-    const stored: StoredWorkspace = { profile, id: created?.id ?? null, token: created?.token ?? null };
+    const stored: StoredWorkspace = { profile: profileWithOwner, id: created?.id ?? null, token: created?.token ?? null };
     saveJson(WORKSPACE_KEY, stored);
     setWorkspace(stored);
     setEditing(false);
     setResult(null);
     setAnnounce(`Workspace saved for ${profile.name}`);
+    void listUserWorkspaces().then(setUserWorkspaces);
+  }
+
+  async function openPastCase(caseItem: CaseSummary) {
+    if (!workspace?.id) return;
+    const loaded = await run(`Opening Case #${caseItem.caseNumber}: ${caseItem.headline}`, () =>
+      loadHistoricalCase(workspace.id!, caseItem.id),
+    );
+    if (!loaded) return;
+    setResult(loaded);
+    setView("evidence");
+    setAnnounce(`Opened Case #${caseItem.caseNumber}: ${caseItem.headline}`);
   }
 
   async function checkData() {
@@ -137,6 +199,7 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
     setResult(reply);
     setView("evidence");
     setAnnounce(`Case ${nextCase} opened with ${reply.findings.length} findings`);
+    if (workspace.id) void listWorkspaceCases(workspace.id).then(setCases);
   }
 
   async function loadSample(week: 1 | 2) {
@@ -182,15 +245,61 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
           </div>
           {workspace && !editing ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">{workspace.profile.name}</span>
-              <Tag>{rolePreset(workspace.profile.role).label}</Tag>
+              {userWorkspaces.length > 1 ? (
+                <select
+                  aria-label="Switch workspace"
+                  value={workspace.id ?? ""}
+                  onChange={(e) => {
+                    const chosenId = e.target.value;
+                    if (chosenId === "new") {
+                      setEditing(true);
+                      return;
+                    }
+                    const target = userWorkspaces.find((w) => w.id === chosenId);
+                    if (target) {
+                      const stored: StoredWorkspace = {
+                        profile: {
+                          role: target.role,
+                          name: target.name,
+                          roleNote: target.roleNote,
+                          places: target.places,
+                          ownerEmail: userEmail,
+                        },
+                        id: target.id,
+                        token: null,
+                      };
+                      saveJson(WORKSPACE_KEY, stored);
+                      setWorkspace(stored);
+                      setResult(null);
+                      setRepair(null);
+                      setText("");
+                      setView("upload");
+                    }
+                  }}
+                  className="rounded-[10px] border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink focus:border-accent focus:outline-none"
+                >
+                  {userWorkspaces.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({rolePreset(w.role).label})
+                    </option>
+                  ))}
+                  <option value="new">+ Create workspace</option>
+                </select>
+              ) : (
+                <span className="font-medium">{workspace.profile.name}</span>
+              )}
+              {userWorkspaces.length <= 1 ? <Tag>{rolePreset(workspace.profile.role).label}</Tag> : null}
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
+              {userEmail && userEmail !== "authorized" ? (
+                <Tag tone="plain">{userEmail}</Tag>
+              ) : null}
               {workspace.id ? null : <Tag tone="warn">Saved in this browser only</Tag>}
               <Button kind="quiet" onClick={() => setEditing(true)}>Settings</Button>
               {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button> : null}
             </div>
           ) : onLock ? (
             <div className="flex items-center gap-2 text-sm">
+              {userEmail && userEmail !== "authorized" ? <Tag tone="plain">{userEmail}</Tag> : null}
               <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button>
             </div>
           ) : null}
@@ -233,7 +342,21 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
           {error ? <p role="alert" className="rounded-[14px] border-l-4 border-warn bg-warn-bg px-4 py-3 text-warn">{error}</p> : null}
 
           {view === "upload" ? (
-            <UploadView text={text} sourceLabel={sourceLabel} busy={busy !== null} onText={(value) => { setText(value); setSourceLabel(""); }} onFile={readFile} onSample={loadSample} onCheck={checkData} />
+            <UploadView
+              text={text}
+              sourceLabel={sourceLabel}
+              busy={busy !== null}
+              cases={cases}
+              loadingCases={loadingCases}
+              onText={(value) => {
+                setText(value);
+                setSourceLabel("");
+              }}
+              onFile={readFile}
+              onSample={loadSample}
+              onCheck={checkData}
+              onOpenCase={openPastCase}
+            />
           ) : null}
           {view === "check" && repair ? (
             <CheckView repair={repair} accepted={accepted} busy={busy !== null} onToggle={(id, value) => setAccepted((current) => { const next = new Set(current); if (value) next.add(id); else next.delete(id); return next; })} onCreate={createBrief} />
@@ -306,44 +429,143 @@ function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave:
 }
 
 function UploadView({
-  text, sourceLabel, busy, onText, onFile, onSample, onCheck,
+  text,
+  sourceLabel,
+  busy,
+  cases,
+  loadingCases,
+  onText,
+  onFile,
+  onSample,
+  onCheck,
+  onOpenCase,
 }: {
   text: string;
   sourceLabel: string;
   busy: boolean;
+  cases: CaseSummary[];
+  loadingCases: boolean;
   onText: (value: string) => void;
   onFile: (file: File) => void;
   onSample: (week: 1 | 2) => void;
   onCheck: () => void;
+  onOpenCase: (caseItem: CaseSummary) => void;
 }) {
   return (
-    <Panel title="Open a new case" description="Paste or upload your readings. Messy is fine: mixed units, date formats and missing values are checked next.">
-      <div className="flex flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[14px] border-2 border-dashed border-line p-4 text-center transition-colors hover:border-accent focus-within:border-accent">
-            <span className="font-medium">Upload CSV or TSV</span>
-            <span className="text-xs text-muted">Up to 200 KB, 5000 rows</span>
-            <input type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) onFile(file); }} />
+    <div className="flex flex-col gap-6">
+      <Panel
+        title="Open a new case"
+        description="Paste or upload your readings. Messy is fine: mixed units, date formats and missing values are checked next."
+      >
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-[14px] border-2 border-dashed border-line p-4 text-center transition-colors hover:border-accent focus-within:border-accent">
+              <span className="font-medium">Upload CSV or TSV</span>
+              <span className="text-xs text-muted">Up to 200 KB, 5000 rows</span>
+              <input
+                type="file"
+                accept=".csv,.tsv,.txt,text/csv,text/plain"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) onFile(file);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => onSample(1)}
+              className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent"
+            >
+              <span className="font-medium">Sample data: week 1</span>
+              <span className="text-xs text-muted">5 Bhopal wards, festival nights</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSample(2)}
+              className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent"
+            >
+              <span className="font-medium">Sample data: week 2</span>
+              <span className="text-xs text-muted">The follow-up week</span>
+            </button>
+          </div>
+          <label className="flex flex-col gap-1">
+            Paste a table (from a spreadsheet, CSV or report)
+            <textarea
+              value={text}
+              rows={8}
+              onChange={(event) => onText(event.target.value)}
+              className="rounded-[10px] border border-line bg-surface p-3 font-mono text-sm"
+              placeholder="Station, Date, Time, PM2.5, PM10"
+            />
           </label>
-          <button type="button" onClick={() => onSample(1)} className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent">
-            <span className="font-medium">Sample data: week 1</span>
-            <span className="text-xs text-muted">5 Bhopal wards, festival nights</span>
-          </button>
-          <button type="button" onClick={() => onSample(2)} className="flex flex-col items-center justify-center gap-1 rounded-[14px] border border-line p-4 text-center transition-colors hover:border-accent">
-            <span className="font-medium">Sample data: week 2</span>
-            <span className="text-xs text-muted">The follow-up week</span>
-          </button>
+          {sourceLabel ? (
+            <p className="text-sm">
+              <Tag>Loaded</Tag> {sourceLabel}
+            </p>
+          ) : null}
+          <div>
+            <Button onClick={onCheck} disabled={busy || !text.trim()}>
+              Check data
+            </Button>
+          </div>
         </div>
-        <label className="flex flex-col gap-1">
-          Paste a table (from a spreadsheet, CSV or report)
-          <textarea value={text} rows={10} onChange={(event) => onText(event.target.value)} className="rounded-[10px] border border-line bg-surface p-3 font-mono text-sm" placeholder="Station, Date, Time, PM2.5, PM10" />
-        </label>
-        {sourceLabel ? <p className="text-sm"><Tag>Loaded</Tag> {sourceLabel}</p> : null}
-        <div>
-          <Button onClick={onCheck} disabled={busy || !text.trim()}>Check data</Button>
-        </div>
-      </div>
-    </Panel>
+      </Panel>
+
+      {cases.length > 0 ? (
+        <Panel
+          title="Past case files"
+          description={`${cases.length} investigation case${cases.length === 1 ? "" : "s"} recorded in this workspace.`}
+        >
+          <ul className="flex flex-col gap-3">
+            {cases.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-line bg-surface p-4 transition-colors hover:border-accent"
+              >
+                <div className="flex flex-1 flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-ink">Case #{c.caseNumber}</span>
+                    <span className="text-xs text-muted">
+                      {new Date(c.createdAt).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                    {c.caseNumber > 1 ? (
+                      <Tag tone="ok">Follow-up</Tag>
+                    ) : (
+                      <Tag tone="plain">Baseline</Tag>
+                    )}
+                    {c.locations.length > 0 ? (
+                      <span className="text-xs text-muted">
+                        {c.locations.slice(0, 3).join(", ")}
+                        {c.locations.length > 3 ? ` +${c.locations.length - 3} more` : ""}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm font-medium text-ink">{c.headline}</p>
+                  <p className="text-xs text-muted">
+                    {c.findingsCount} finding{c.findingsCount === 1 ? "" : "s"} • {c.actionsCount} action{c.actionsCount === 1 ? "" : "s"}
+                    {c.periodStart && c.periodEnd ? ` • Period: ${c.periodStart} to ${c.periodEnd}` : ""}
+                  </p>
+                </div>
+                <div>
+                  <Button kind="quiet" onClick={() => onOpenCase(c)} disabled={busy}>
+                    Open case
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : loadingCases ? (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Loading case history…
+        </p>
+      ) : null}
+    </div>
   );
 }
 

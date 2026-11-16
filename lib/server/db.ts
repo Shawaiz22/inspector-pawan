@@ -1,6 +1,7 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import type { BriefSnapshot, CaseAction, LocationStats, LocalHotspot, RepairLogEntry, Role } from "../types";
+import type { BriefSnapshot, CaseAction, Finding, LocationStats, LocalHotspot, NormalizedRow, RepairLogEntry, Role } from "../types";
+import type { BriefResult } from "../api/types";
 import { readServerEnv } from "./env";
 import { StorageError } from "./errors";
 
@@ -27,6 +28,7 @@ async function run<T>(sql: Sql, text: string, params: unknown[]): Promise<T[]> {
 /** A workspace as stored. */
 export interface WorkspaceRecord {
   id: string;
+  owner_email: string | null;
   token_hash: string;
   role: Role;
   name: string;
@@ -35,17 +37,58 @@ export interface WorkspaceRecord {
   created_at: string;
 }
 
+/** Ensures the workspaces table exists and has owner_email. */
+export async function ensureWorkspacesTable(sql: Sql): Promise<void> {
+  await run(
+    sql,
+    `CREATE TABLE IF NOT EXISTS workspaces (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_email text,
+      token_hash text NOT NULL,
+      role text NOT NULL,
+      name text NOT NULL,
+      role_note text,
+      places jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    [],
+  );
+  await run(
+    sql,
+    `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_email text`,
+    [],
+  );
+  await run(
+    sql,
+    `CREATE INDEX IF NOT EXISTS workspaces_owner_email_idx ON workspaces (owner_email)`,
+    [],
+  );
+}
+
 /** Inserts a workspace and returns its id. */
 export async function insertWorkspace(
   sql: Sql,
-  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: string[] },
+  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: string[]; ownerEmail?: string | null },
 ): Promise<string> {
   const rows = await run<{ id: string }>(
     sql,
-    "INSERT INTO workspaces (token_hash, role, name, role_note, places) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id",
-    [input.tokenHash, input.role, input.name, input.roleNote, JSON.stringify(input.places)],
+    "INSERT INTO workspaces (token_hash, role, name, role_note, places, owner_email) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id",
+    [input.tokenHash, input.role, input.name, input.roleNote, JSON.stringify(input.places), input.ownerEmail ?? null],
   );
   return rows[0].id;
+}
+
+/** Lists all workspaces owned by a given email address. */
+export async function listWorkspacesByOwner(sql: Sql, ownerEmail: string): Promise<WorkspaceRecord[]> {
+  try {
+    return await run<WorkspaceRecord>(
+      sql,
+      "SELECT * FROM workspaces WHERE LOWER(owner_email) = LOWER($1) ORDER BY created_at DESC",
+      [ownerEmail.trim()],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Loads a workspace by id, or null. */
@@ -155,6 +198,135 @@ export async function findPreviousBrief(sql: Sql, workspaceId: string, briefId?:
     ? await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2", [workspaceId, briefId])
     : await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 1", [workspaceId]);
   return rows[0] ? toPastBrief(rows[0]) : null;
+}
+
+export interface CaseSummary {
+  id: string;
+  caseNumber: number;
+  createdAt: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  locations: string[];
+  headline: string;
+  summary: string;
+  findingsCount: number;
+  actionsCount: number;
+}
+
+interface FullBriefRow {
+  id: string;
+  fingerprint: string;
+  period_start: string | null;
+  period_end: string | null;
+  locations: string[];
+  stats: { stats: LocationStats[]; hotspots: LocalHotspot[] };
+  brief: { headline?: string; summary?: string; findings?: Finding[]; rejectedActions?: Array<{ libraryId: string; reasons: string[] }> };
+  actions: CaseAction[];
+  repairs: RepairLogEntry[];
+  created_at: string;
+}
+
+/** Lists all cases in a workspace in chronological order with summary metrics. */
+export async function listCasesByWorkspace(sql: Sql, workspaceId: string): Promise<CaseSummary[]> {
+  const rows = await run<FullBriefRow>(
+    sql,
+    "SELECT id, period_start, period_end, locations, brief, actions, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at ASC",
+    [workspaceId],
+  );
+  return rows.map((row, index) => {
+    const briefObj = (row.brief || {}) as { headline?: string; summary?: string; findings?: Finding[] };
+    return {
+      id: row.id,
+      caseNumber: index + 1,
+      createdAt: new Date(row.created_at).toISOString(),
+      periodStart: localTimestamp(row.period_start),
+      periodEnd: localTimestamp(row.period_end),
+      locations: row.locations || [],
+      headline: briefObj.headline || `Case #${index + 1}`,
+      summary: briefObj.summary || "",
+      findingsCount: briefObj.findings?.length || 0,
+      actionsCount: (row.actions || []).length,
+    };
+  }).reverse();
+}
+
+/** Loads and reconstructs the full BriefResult for any historical case. */
+export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: string): Promise<BriefResult | null> {
+  const rows = await run<FullBriefRow>(
+    sql,
+    "SELECT * FROM briefs WHERE workspace_id = $1 AND id = $2",
+    [workspaceId, briefId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const briefObj = (row.brief || {}) as {
+    headline?: string;
+    summary?: string;
+    findings?: Finding[];
+    rejectedActions?: Array<{ libraryId: string; reasons: string[] }>;
+  };
+  const statsObj = (row.stats || { stats: [], hotspots: [] }) as { stats: LocationStats[]; hotspots: LocalHotspot[] };
+
+  const timestampsSet = new Set<string>();
+  const locationsSet = new Set<string>();
+  const syntheticRows: NormalizedRow[] = [];
+  let rowIndex = 1;
+
+  for (const s of statsObj.stats || []) {
+    locationsSet.add(s.location);
+    if (s.max?.timestamp) {
+      timestampsSet.add(s.max.timestamp);
+      syntheticRows.push({
+        row: rowIndex++,
+        location: s.location,
+        timestamp: s.max.timestamp,
+        values: {
+          pm25: s.pollutant === "pm25" ? s.mean : null,
+          pm10: s.pollutant === "pm10" ? s.mean : null,
+        },
+        lat: null,
+        lng: null,
+      });
+    }
+  }
+
+  const sortedTimestamps = Array.from(timestampsSet).sort();
+  const sortedLocations = row.locations && row.locations.length > 0 ? row.locations : Array.from(locationsSet).sort();
+
+  return {
+    briefId: row.id,
+    createdAt: new Date(row.created_at).toISOString(),
+    fingerprint: row.fingerprint,
+    headline: briefObj.headline || "Investigation Brief",
+    summary: briefObj.summary || "",
+    findings: briefObj.findings || [],
+    actions: row.actions || [],
+    rejectedActions: briefObj.rejectedActions || [],
+    compare: null,
+    analysis: {
+      rowCount: syntheticRows.length,
+      locations: sortedLocations,
+      timestamps: sortedTimestamps,
+      periodStart: localTimestamp(row.period_start),
+      periodEnd: localTimestamp(row.period_end),
+      coordinates: {},
+      stats: statsObj.stats || [],
+      events: [],
+      eventSlots: [],
+      hotspots: statsObj.hotspots || [],
+      flags: [],
+    },
+    rows: syntheticRows,
+    ledger: row.repairs || [],
+    snapshot: {
+      periodStart: localTimestamp(row.period_start),
+      periodEnd: localTimestamp(row.period_end),
+      locations: sortedLocations,
+      stats: statsObj.stats || [],
+      hotspots: statsObj.hotspots || [],
+    },
+  };
 }
 
 /** Recent briefs of a workspace, newest first, for the compare picker. */
