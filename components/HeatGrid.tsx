@@ -56,7 +56,7 @@ export function HeatGrid({
           </caption>
           <thead>
             <tr>
-              <th scope="col" className="sticky left-0 z-20 bg-surface pr-2 text-left font-medium">Location</th>
+              <th scope="col" className="sticky left-0 z-10 bg-surface pr-2 text-left font-medium">Location</th>
               {analysis.timestamps.map((timestamp) => (
                 <th key={timestamp} scope="col" className="min-w-10 text-xs font-normal text-muted">
                   {shortTime(timestamp)}
@@ -67,7 +67,7 @@ export function HeatGrid({
           <tbody>
             {analysis.locations.map((location) => (
               <tr key={location}>
-                <th scope="row" className="sticky left-0 z-20 whitespace-nowrap bg-surface pr-3 text-left font-medium shadow-[6px_0_6px_-6px_rgba(0,0,0,0.4)]">{location}</th>
+                <th scope="row" className="sticky left-0 z-10 whitespace-nowrap bg-surface pr-3 text-left font-medium shadow-[6px_0_6px_-6px_rgba(0,0,0,0.4)]">{location}</th>
                 {analysis.timestamps.map((timestamp, column) => {
                   const row = cellByKey.get(`${location}|${timestamp}`);
                   const value = row?.values[pollutant] ?? null;

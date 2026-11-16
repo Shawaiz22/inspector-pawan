@@ -169,7 +169,7 @@ function Workspace({ onLock }: { onLock?: () => Promise<void> }) {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="no-print sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
+      <header className="no-print sticky top-0 z-30 border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <BrandMark slot="header" className="h-10 w-10 text-accent">
