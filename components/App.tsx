@@ -86,6 +86,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [creatingNew, setCreatingNew] = useState(false);
   const [caseCount, setCaseCount] = useState(() => loadJson<number>(CASE_KEY, 0));
   const [view, setView] = useState<View>("upload");
   const [text, setText] = useState("");
@@ -334,13 +335,25 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                     setView("upload");
                   }
                 }}
-                onCreateNew={() => setEditing(true)}
+                onCreateNew={() => {
+                  setCreatingNew(true);
+                  setEditing(false);
+                }}
               />
+              <Button
+                kind="quiet"
+                onClick={() => {
+                  setCreatingNew(true);
+                  setEditing(false);
+                }}
+              >
+                + New workspace
+              </Button>
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
               {userEmail && userEmail !== "authorized" ? (
                 <Tag tone="plain">{userEmail}</Tag>
               ) : null}
-              <Button kind="quiet" onClick={() => setEditing(true)}>Settings</Button>
+              <Button kind="quiet" onClick={() => { setEditing(true); setCreatingNew(false); }}>Settings</Button>
               {onLock ? <Button kind="quiet" onClick={() => void onLock()}>Lock workspace</Button> : null}
             </div>
           ) : onLock ? (
@@ -355,8 +368,17 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
 
       <div aria-live="polite" className="sr-only">{announce}</div>
 
-      {!workspace || editing ? (
-        <SetupForm initial={workspace?.profile ?? null} onSave={saveProfile} busy={busy !== null} />
+      {!workspace || editing || creatingNew ? (
+        <SetupForm
+          initial={creatingNew ? null : (workspace?.profile ?? null)}
+          onSave={(profile) => {
+            setCreatingNew(false);
+            setEditing(false);
+            saveProfile(profile);
+          }}
+          onCancel={workspace ? () => { setCreatingNew(false); setEditing(false); } : undefined}
+          busy={busy !== null}
+        />
       ) : (
         <>
           <nav aria-label="Case steps" className="no-print">
@@ -421,7 +443,17 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
   );
 }
 
-function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave: (profile: Profile) => void; busy: boolean }) {
+function SetupForm({
+  initial,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  initial: Profile | null;
+  onSave: (profile: Profile) => void;
+  onCancel?: () => void;
+  busy: boolean;
+}) {
   const [role, setRole] = useState<Role>(initial?.role ?? "ward_officer");
   const [name, setName] = useState(initial?.name ?? "");
   const [roleNote, setRoleNote] = useState(initial?.roleNote ?? "");
@@ -682,8 +714,13 @@ function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave:
           )}
           <span className="text-xs text-muted">Used only to address letters. The ward office is always included.</span>
         </div>
-        <div>
+        <div className="flex items-center gap-3">
           <Button type="submit" disabled={busy || !name.trim()}>Save workspace</Button>
+          {onCancel ? (
+            <Button type="button" kind="quiet" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : null}
         </div>
       </form>
     </Panel>
