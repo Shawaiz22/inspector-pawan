@@ -308,7 +308,12 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
               <p className="hidden sm:block text-xs text-muted truncate">Every air reading investigated. Every action followed up.</p>
             </div>
           </div>
-          {workspace && !editing ? (
+          {loadingInitial ? (
+            <div className="flex items-center gap-2 rounded-[12px] border border-line bg-surface px-3 py-1.5 text-sm text-muted">
+              <Spinner />
+              <span>Loading workspaces…</span>
+            </div>
+          ) : workspace && !editing ? (
             <div className="flex items-center gap-1.5 sm:gap-2 text-sm shrink-0">
               <WorkspaceSelector
                 currentWorkspace={{
@@ -320,6 +325,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                 onSelect={(chosenId) => {
                   const target = userWorkspaces.find((w) => w.id === chosenId);
                   if (target) {
+                    setCases([]);
+                    setLoadingCases(true);
                     const stored: StoredWorkspace = {
                       profile: {
                         role: target.role,
@@ -378,11 +385,11 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
 
       <div aria-live="polite" className="sr-only">{announce}</div>
 
-      {loadingInitial && !workspace ? (
+      {loadingInitial ? (
         <div className="flex flex-1 items-center justify-center py-20 text-ink">
           <div className="flex flex-col items-center gap-3">
             <Spinner />
-            <p className="text-sm text-muted">Loading your workspace…</p>
+            <p className="text-sm text-muted">Loading your workspaces…</p>
           </div>
         </div>
       ) : !workspace || editing || creatingNew ? (
@@ -828,7 +835,13 @@ function UploadView({
         </div>
       </Panel>
 
-      {cases.length > 0 ? (
+      {loadingCases ? (
+        <Panel title="Past case files" description="Checking database for past investigations…">
+          <div className="flex items-center gap-2 p-3 text-sm text-muted">
+            <Spinner /> <span>Loading case history…</span>
+          </div>
+        </Panel>
+      ) : cases.length > 0 ? (
         <Panel
           title="Past case files"
           description={`${cases.length} investigation case${cases.length === 1 ? "" : "s"} recorded in this workspace.`}
@@ -876,10 +889,6 @@ function UploadView({
             ))}
           </ul>
         </Panel>
-      ) : loadingCases ? (
-        <p className="flex items-center gap-2 text-sm text-muted">
-          <Spinner /> Loading case history…
-        </p>
       ) : null}
     </div>
   );
