@@ -202,3 +202,87 @@ export async function findNotice(
   const row = rows[0];
   return row ? { slug: row.slug, area: row.area, content: row.content, publishedAt: new Date(row.published_at).toISOString() } : null;
 }
+
+/** An access code record stored in PostgreSQL. */
+export interface AccessCodeRecord {
+  id: string;
+  email: string;
+  code_hash: string;
+  code_prefix: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/** Idempotently creates the access_codes table and index if missing. */
+export async function ensureAccessCodeTable(sql: Sql): Promise<void> {
+  await run(
+    sql,
+    `CREATE TABLE IF NOT EXISTS access_codes (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      email text NOT NULL,
+      code_hash text NOT NULL UNIQUE,
+      code_prefix text NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz,
+      revoked_at timestamptz,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    )`,
+    [],
+  );
+  await run(
+    sql,
+    `CREATE INDEX IF NOT EXISTS access_codes_email_idx ON access_codes (email)`,
+    [],
+  );
+}
+
+/** Inserts a new access code record. */
+export async function insertAccessCode(
+  sql: Sql,
+  input: { email: string; codeHash: string; codePrefix: string; metadata?: Record<string, unknown> },
+): Promise<AccessCodeRecord> {
+  await ensureAccessCodeTable(sql);
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    `INSERT INTO access_codes (email, code_hash, code_prefix, metadata)
+     VALUES ($1, $2, $3, $4::jsonb)
+     RETURNING *`,
+    [input.email.toLowerCase().trim(), input.codeHash, input.codePrefix, JSON.stringify(input.metadata ?? {})],
+  );
+  return rows[0];
+}
+
+/** Looks up an active access code by its SHA-256 hash. */
+export async function findActiveAccessCode(sql: Sql, codeHash: string): Promise<AccessCodeRecord | null> {
+  await ensureAccessCodeTable(sql);
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    "SELECT * FROM access_codes WHERE code_hash = $1 AND is_active = true",
+    [codeHash],
+  );
+  return rows[0] ?? null;
+}
+
+/** Updates the last_used_at timestamp on an access code. */
+export async function touchAccessCode(sql: Sql, id: string): Promise<void> {
+  await run(
+    sql,
+    "UPDATE access_codes SET last_used_at = now() WHERE id = $1",
+    [id],
+  );
+}
+
+/** Finds the most recent active access code for an email. */
+export async function findLatestAccessCodeByEmail(sql: Sql, email: string): Promise<AccessCodeRecord | null> {
+  await ensureAccessCodeTable(sql);
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    "SELECT * FROM access_codes WHERE email = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+    [email.toLowerCase().trim()],
+  );
+  return rows[0] ?? null;
+}
