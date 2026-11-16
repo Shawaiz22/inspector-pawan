@@ -30,6 +30,7 @@ import type { BriefSnapshot, CaseAction, Finding, Pollutant, Role } from "@/lib/
 import { BootProvider, BootSplash, BrandMark } from "./BootSplash";
 import { HeatGrid } from "./HeatGrid";
 import { Button, Logo, Panel, RowChips, Spinner, Tag, Warning } from "./ui";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 
 type View = "upload" | "check" | "evidence" | "plan" | "notice" | "followup";
 type Language = "en" | "hi";
@@ -304,15 +305,14 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           </div>
           {workspace && !editing ? (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <select
-                aria-label="Switch workspace"
-                value={workspace.id ?? "current"}
-                onChange={(e) => {
-                  const chosenId = e.target.value;
-                  if (chosenId === "new") {
-                    setEditing(true);
-                    return;
-                  }
+              <WorkspaceSelector
+                currentWorkspace={{
+                  id: workspace.id,
+                  name: workspace.profile.name,
+                  role: workspace.profile.role,
+                }}
+                workspaces={userWorkspaces}
+                onSelect={(chosenId) => {
                   const target = userWorkspaces.find((w) => w.id === chosenId);
                   if (target) {
                     const stored: StoredWorkspace = {
@@ -334,21 +334,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                     setView("upload");
                   }
                 }}
-                className="rounded-[10px] border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink focus:border-accent focus:outline-none cursor-pointer"
-              >
-                {userWorkspaces.length > 0 ? (
-                  userWorkspaces.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({rolePreset(w.role).label})
-                    </option>
-                  ))
-                ) : (
-                  <option value={workspace.id ?? "current"}>
-                    {workspace.profile.name} ({rolePreset(workspace.profile.role).label})
-                  </option>
-                )}
-                <option value="new">+ Create workspace</option>
-              </select>
+                onCreateNew={() => setEditing(true)}
+              />
               {caseCount > 0 ? <Tag tone="ok">Case #{caseCount}</Tag> : null}
               {userEmail && userEmail !== "authorized" ? (
                 <Tag tone="plain">{userEmail}</Tag>
@@ -631,7 +618,7 @@ function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave:
               {placesList.length < 10 ? (
                 <div className="rounded-[12px] border border-line bg-surface/60 p-3 flex flex-col gap-2.5 text-sm">
                   <span className="text-xs font-semibold text-muted uppercase tracking-wider">Add a nearby place</span>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
                     <input
                       value={newPlaceName}
                       maxLength={120}
@@ -642,20 +629,29 @@ function SetupForm({ initial, onSave, busy }: { initial: Profile | null; onSave:
                           handleAddPlace();
                         }
                       }}
-                      className="rounded-[8px] border border-line bg-surface px-3 py-1.5 text-sm"
+                      className="rounded-[10px] border border-line bg-surface px-3 py-2 text-sm"
                       placeholder={PLACE_CATEGORIES.find((c) => c.id === newCategory)?.placeholder ?? "Place name"}
                     />
-                    <select
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value as PlaceCategory)}
-                      className="rounded-[8px] border border-line bg-surface px-3 py-1.5 text-sm"
-                    >
-                      {PLACE_CATEGORIES.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-muted">Category:</span>
+                      {PLACE_CATEGORIES.map((cat) => {
+                        const isSelected = newCategory === cat.id;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setNewCategory(cat.id)}
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
+                              isSelected
+                                ? "bg-accent text-accent-ink shadow-sm"
+                                : "border border-line bg-surface text-ink hover:border-accent hover:bg-haze"
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {newCategory === "other" ? (
