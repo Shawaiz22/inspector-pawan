@@ -545,6 +545,7 @@ function SetupForm({
   const [newCategory, setNewCategory] = useState<PlaceCategory>("industrial");
   const [newCustomCategory, setNewCustomCategory] = useState("");
   const [newContact, setNewContact] = useState("");
+  const [showContact, setShowContact] = useState(false);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState("");
 
@@ -561,6 +562,7 @@ function SetupForm({
     setNewPlaceName("");
     setNewCustomCategory("");
     setNewContact("");
+    setShowContact(false);
   }
 
   function handleRemovePlace(index: number) {
@@ -728,9 +730,8 @@ function SetupForm({
               )}
 
               {placesList.length < 10 ? (
-                <div className="rounded-[12px] border border-line bg-surface/60 p-3 flex flex-col gap-2.5 text-sm">
-                  <span className="text-xs font-semibold text-muted uppercase tracking-wider">Add a nearby place</span>
-                  <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 pt-1">
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
                     <input
                       value={newPlaceName}
                       maxLength={120}
@@ -741,52 +742,72 @@ function SetupForm({
                           handleAddPlace();
                         }
                       }}
-                      className="rounded-[10px] border border-line bg-surface px-3 py-2 text-sm"
-                      placeholder={PLACE_CATEGORIES.find((c) => c.id === newCategory)?.placeholder ?? "Place name"}
+                      className="flex-1 min-w-[200px] rounded-[10px] border border-line bg-surface px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      placeholder={PLACE_CATEGORIES.find((c) => c.id === newCategory)?.placeholder ?? "Enter nearby place name..."}
                     />
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs text-muted">Category:</span>
-                      {PLACE_CATEGORIES.map((cat) => {
-                        const isSelected = newCategory === cat.id;
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setNewCategory(cat.id)}
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-all ${
-                              isSelected
-                                ? "bg-accent text-accent-ink shadow-sm"
-                                : "border border-line bg-surface text-ink hover:border-accent hover:bg-haze"
-                            }`}
-                          >
+                    <div className="relative shrink-0">
+                      <select
+                        aria-label="Place category"
+                        value={newCategory}
+                        onChange={(e) => setNewCategory(e.target.value as PlaceCategory)}
+                        className="rounded-[10px] border border-line bg-surface px-3 py-2 pr-8 text-sm font-medium text-ink focus:border-accent focus:outline-none cursor-pointer appearance-none"
+                      >
+                        {PLACE_CATEGORIES.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
                             {cat.label}
-                          </button>
-                        );
-                      })}
+                          </option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
                     </div>
+                    <Button
+                      type="button"
+                      onClick={handleAddPlace}
+                      disabled={!newPlaceName.trim()}
+                    >
+                      + Add
+                    </Button>
                   </div>
 
-                  {newCategory === "other" ? (
-                    <input
-                      value={newCustomCategory}
-                      maxLength={100}
-                      onChange={(e) => setNewCustomCategory(e.target.value)}
-                      className="rounded-[8px] border border-line bg-surface px-3 py-1.5 text-sm"
-                      placeholder="Specify type (e.g. Timber Yard, Grain Depot, Bus Terminal)"
-                    />
-                  ) : null}
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+                    {newCategory === "other" ? (
+                      <input
+                        value={newCustomCategory}
+                        maxLength={100}
+                        onChange={(e) => setNewCustomCategory(e.target.value)}
+                        className="w-full sm:w-72 rounded-[8px] border border-line bg-surface px-2.5 py-1 text-xs focus:border-accent focus:outline-none"
+                        placeholder="Specify type (e.g. Timber Yard, Depot, Brick Kiln)"
+                      />
+                    ) : <span />}
 
-                  <div className="flex gap-2">
-                    <input
-                      value={newContact}
-                      maxLength={120}
-                      onChange={(e) => setNewContact(e.target.value)}
-                      className="flex-1 rounded-[8px] border border-line bg-surface px-3 py-1.5 text-sm"
-                      placeholder="Contact (optional phone or email for 1-click sharing)"
-                    />
-                    <Button type="button" kind="quiet" onClick={handleAddPlace} disabled={!newPlaceName.trim()}>
-                      + Add place
-                    </Button>
+                    {showContact ? (
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                        <input
+                          value={newContact}
+                          maxLength={120}
+                          onChange={(e) => setNewContact(e.target.value)}
+                          className="w-full sm:w-64 rounded-[8px] border border-line bg-surface px-2.5 py-1 text-xs focus:border-accent focus:outline-none"
+                          placeholder="Phone (WhatsApp) or email"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setShowContact(false); setNewContact(""); }}
+                          className="text-muted hover:text-ink text-xs px-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowContact(true)}
+                        className="text-muted hover:text-accent transition-colors"
+                      >
+                        + Add phone / email for 1-click sharing
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : null}
