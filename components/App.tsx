@@ -13,6 +13,7 @@ import { ApiFailure, postJson } from "@/lib/client/api";
 import { loadJson, saveJson } from "@/lib/client/storage";
 import type { CaseSummary } from "@/lib/server/db";
 import { BootProvider, BootSplash, BrandMark } from "./BootSplash";
+import { CaseArchiveView } from "./CaseArchiveView";
 import { CheckView } from "./CheckView";
 import { EvidenceView } from "./EvidenceView";
 import { FollowUpView } from "./FollowUpView";
@@ -21,9 +22,11 @@ import { PlanView } from "./PlanView";
 import { SetupForm } from "./SetupForm";
 import { Logo, Spinner } from "./ui";
 import { UploadView } from "./UploadView";
+import { WorkspaceHub } from "./WorkspaceHub";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
 export type View = "upload" | "check" | "evidence" | "plan" | "notice" | "followup";
+export type Screen = "hub" | "new_investigation" | "archive" | "case_workflow";
 
 export interface StoredWorkspace {
   profile: Profile;
@@ -72,6 +75,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
   const [loadingCases, setLoadingCases] = useState(false);
   const [editing, setEditing] = useState(false);
   const [creatingNew, setCreatingNew] = useState(false);
+  const [screen, setScreen] = useState<Screen>("hub");
+  const [archiveOrigin, setArchiveOrigin] = useState(false);
   const [activeCaseNumber, setActiveCaseNumber] = useState<number | null>(null);
   const [view, setView] = useState<View>("upload");
   const [text, setText] = useState("");
@@ -206,6 +211,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
     setWorkspace(stored);
     setEditing(false);
     setResult(null);
+    setScreen("hub");
     setAnnounce(`Workspace saved for ${profile.name}`);
     void listUserWorkspaces().then(setUserWorkspaces);
   }
@@ -216,9 +222,11 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
       loadHistoricalCase(workspace.id!, caseItem.id),
     );
     if (!loaded) return;
+    setArchiveOrigin(true);
     setActiveCaseNumber(caseItem.caseNumber);
     setResult(loaded);
     setView("evidence");
+    setScreen("case_workflow");
     setAnnounce(`Opened Case #${caseItem.caseNumber}: ${caseItem.headline}`);
   }
 
@@ -228,6 +236,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
     setRepair(reply);
     setAccepted(new Set(reply.proposals.map((proposal) => proposal.id)));
     setView("check");
+    setScreen("case_workflow");
     setAnnounce(`Inspector Pawan found ${reply.flags.length} data problems and proposed ${reply.proposals.length} fixes`);
   }
 
@@ -252,6 +261,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
     setActiveCaseNumber(nextCase);
     setResult(reply);
     setView("evidence");
+    setScreen("case_workflow");
     setAnnounce(`Case ${nextCase} opened with ${reply.findings.length} findings`);
     if (workspace.id) void listWorkspaceCases(workspace.id).then(setCases);
   }
@@ -288,12 +298,18 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
     <div className="flex flex-1 flex-col">
       <header className="no-print sticky top-0 z-30 border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-2.5">
-          <div className="flex items-center gap-3 min-w-0">
-            <BrandMark slot="header" className="h-9 w-9 text-accent shrink-0">
+          <div
+            onClick={() => {
+              if (workspace && !editing) setScreen("hub");
+            }}
+            className="flex items-center gap-3 min-w-0 cursor-pointer group"
+            title="Go to Workspace Hub"
+          >
+            <BrandMark slot="header" className="h-9 w-9 text-accent shrink-0 group-hover:scale-105 transition-transform">
               <Logo className="h-9 w-9 text-accent" />
             </BrandMark>
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-[22px] font-semibold leading-tight truncate">Inspector Pawan</h1>
+              <h1 className="text-lg sm:text-[22px] font-semibold leading-tight truncate group-hover:text-accent transition-colors">Inspector Pawan</h1>
               <p className="hidden sm:block text-xs text-muted truncate">Every air reading investigated. Every action followed up.</p>
             </div>
           </div>
@@ -334,7 +350,8 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                     setResult(null);
                     setRepair(null);
                     setText("");
-                    setView("upload");
+                    setActiveCaseNumber(null);
+                    setScreen("hub");
                   }
                 }}
                 onCreateNew={() => {
@@ -371,7 +388,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
                 <span className="hidden sm:inline">Settings</span>
               </button>
@@ -450,41 +467,112 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
             onCancel={workspace ? () => { setCreatingNew(false); setEditing(false); } : undefined}
             busy={busy !== null}
           />
+        ) : screen === "hub" ? (
+          <WorkspaceHub
+            profile={workspace.profile}
+            cases={cases}
+            loadingCases={loadingCases}
+            onStartNew={() => {
+              setArchiveOrigin(false);
+              setText("");
+              setRepair(null);
+              setResult(null);
+              setActiveCaseNumber(null);
+              setScreen("new_investigation");
+            }}
+            onViewPast={() => {
+              setScreen("archive");
+            }}
+            onOpenSettings={() => {
+              setEditing(true);
+            }}
+          />
+        ) : screen === "archive" ? (
+          <CaseArchiveView
+            workspaceName={workspace.profile.name}
+            cases={cases}
+            loadingCases={loadingCases}
+            busy={busy !== null}
+            onBackToHub={() => setScreen("hub")}
+            onStartNew={() => {
+              setArchiveOrigin(false);
+              setText("");
+              setRepair(null);
+              setResult(null);
+              setActiveCaseNumber(null);
+              setScreen("new_investigation");
+            }}
+            onOpenCase={openPastCase}
+          />
+        ) : screen === "new_investigation" ? (
+          <UploadView
+            text={text}
+            sourceLabel={sourceLabel}
+            busy={busy !== null}
+            onBackToHub={() => setScreen("hub")}
+            onText={(value) => {
+              setText(value);
+              setSourceLabel("");
+            }}
+            onFile={readFile}
+            onSample={loadSample}
+            onCheck={checkData}
+          />
         ) : (
+          /* screen === "case_workflow" */
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <nav aria-label="Case steps" className="no-print">
-                <ol className="flex flex-wrap items-center gap-1">
-                  {STEPS.map((step, index) => (
-                    <li key={step.view} className="flex items-center gap-1">
-                      {index > 0 ? <span aria-hidden className={`h-px w-4 ${available[step.view] ? "bg-accent" : "bg-line"}`} /> : null}
-                      <button
-                        type="button"
-                        disabled={!available[step.view]}
-                        aria-current={view === step.view ? "step" : undefined}
-                        onClick={() => setView(step.view)}
-                        className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                          view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface hover:border-accent"
-                        }`}
-                      >
-                        <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
-                          view === step.view ? "bg-accent-ink text-accent" : "bg-haze"
-                        }`}>
-                          {index + 1}
-                        </span>
-                        {step.label}
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              </nav>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (archiveOrigin) {
+                    setScreen("archive");
+                  } else {
+                    setScreen("hub");
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-accent transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+                <span>{archiveOrigin ? "Back to Case Archive" : "Back to Workspace Hub"}</span>
+              </button>
 
-              {activeCaseNumber ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted shadow-sm">
-                  <span className="font-bold text-ink">Active Case #{activeCaseNumber}</span>
-                </div>
-              ) : null}
+              <div className="flex items-center gap-2">
+                {activeCaseNumber ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs font-bold text-ink shadow-sm">
+                    Active Case #{activeCaseNumber}
+                  </span>
+                ) : null}
+              </div>
             </div>
+
+            <nav aria-label="Case steps" className="no-print">
+              <ol className="flex flex-wrap items-center gap-1">
+                {STEPS.map((step, index) => (
+                  <li key={step.view} className="flex items-center gap-1">
+                    {index > 0 ? <span aria-hidden className={`h-px w-4 ${available[step.view] ? "bg-accent" : "bg-line"}`} /> : null}
+                    <button
+                      type="button"
+                      disabled={!available[step.view]}
+                      aria-current={view === step.view ? "step" : undefined}
+                      onClick={() => setView(step.view)}
+                      className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface hover:border-accent"
+                      }`}
+                    >
+                      <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
+                        view === step.view ? "bg-accent-ink text-accent" : "bg-haze"
+                      }`}>
+                        {index + 1}
+                      </span>
+                      {step.label}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </nav>
 
             {busy ? (
               <p role="status" className="flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3">
@@ -499,8 +587,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                 text={text}
                 sourceLabel={sourceLabel}
                 busy={busy !== null}
-                cases={cases}
-                loadingCases={loadingCases}
+                onBackToHub={() => setScreen("hub")}
                 onText={(value) => {
                   setText(value);
                   setSourceLabel("");
@@ -508,7 +595,6 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                 onFile={readFile}
                 onSample={loadSample}
                 onCheck={checkData}
-                onOpenCase={openPastCase}
               />
             ) : null}
 
@@ -540,7 +626,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
                   setText("");
                   setResult(null);
                   setActiveCaseNumber(null);
-                  setView("upload");
+                  setScreen("hub");
                 }}
               />
             ) : null}
