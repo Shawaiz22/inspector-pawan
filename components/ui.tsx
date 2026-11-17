@@ -55,6 +55,11 @@ export function Tag({ children, tone = "plain" }: { children: ReactNode; tone?: 
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${style}`}>{children}</span>;
 }
 
+/** Copies text to the clipboard safely. */
+export function copy(text: string): void {
+  void navigator.clipboard?.writeText(text);
+}
+
 /** A button. `kind` picks the emphasis. */
 export function Button({
   children,
