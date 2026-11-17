@@ -80,8 +80,24 @@ export function POST(request: Request): Promise<Response> {
         periodStart: analysis.periodStart ? `${analysis.periodStart}:00Z` : null,
         periodEnd: analysis.periodEnd ? `${analysis.periodEnd}:00Z` : null,
         locations: analysis.locations,
-        stats: { stats: analysis.stats, hotspots: analysis.hotspots },
-        brief: { headline: written.headline, summary: written.summary, findings, rejectedActions },
+        stats: {
+          stats: analysis.stats,
+          hotspots: analysis.hotspots,
+          timestamps: analysis.timestamps,
+          rows: normalized.rows.map((r) => ({
+            row: r.row,
+            location: r.location,
+            timestamp: r.timestamp,
+            values: r.values,
+          })),
+        },
+        brief: {
+          headline: written.headline,
+          summary: written.summary,
+          findings,
+          rejectedActions,
+          compare,
+        },
         actions,
         repairs: normalized.ledger,
       });

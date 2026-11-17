@@ -1,7 +1,8 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { compareBriefs } from "../brief/compare";
 import type { PlaceEntry } from "../places";
-import type { BriefSnapshot, CaseAction, Finding, LocationStats, LocalHotspot, NormalizedRow, RepairLogEntry, Role } from "../types";
+import type { BriefSnapshot, CaseAction, CompareResult, Finding, LocationStats, LocalHotspot, NormalizedRow, RepairLogEntry, Role } from "../types";
 import type { BriefResult } from "../api/types";
 import { readServerEnv } from "./env";
 import { StorageError } from "./errors";
@@ -131,7 +132,17 @@ export interface StoredBriefInput {
   periodStart: string | null;
   periodEnd: string | null;
   locations: string[];
-  stats: { stats: LocationStats[]; hotspots: LocalHotspot[] };
+  stats: {
+    stats: LocationStats[];
+    hotspots: LocalHotspot[];
+    timestamps?: string[];
+    rows?: Array<{
+      row: number;
+      location: string;
+      timestamp: string | null;
+      values: { pm25: number | null; pm10: number | null };
+    }>;
+  };
   brief: unknown;
   actions: CaseAction[];
   repairs: RepairLogEntry[];
@@ -212,6 +223,7 @@ export interface CaseSummary {
   summary: string;
   findingsCount: number;
   actionsCount: number;
+  primaryHotspot: string | null;
 }
 
 interface FullBriefRow {
@@ -231,11 +243,13 @@ interface FullBriefRow {
 export async function listCasesByWorkspace(sql: Sql, workspaceId: string): Promise<CaseSummary[]> {
   const rows = await run<FullBriefRow>(
     sql,
-    "SELECT id, period_start, period_end, locations, brief, actions, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at ASC",
+    "SELECT id, period_start, period_end, locations, stats, brief, actions, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at ASC",
     [workspaceId],
   );
   return rows.map((row, index) => {
     const briefObj = (row.brief || {}) as { headline?: string; summary?: string; findings?: Finding[] };
+    const statsObj = (row.stats || {}) as { hotspots?: LocalHotspot[] };
+    const primaryHotspot = statsObj.hotspots?.[0]?.location ?? null;
     return {
       id: row.id,
       caseNumber: index + 1,
@@ -247,6 +261,7 @@ export async function listCasesByWorkspace(sql: Sql, workspaceId: string): Promi
       summary: briefObj.summary || "",
       findingsCount: briefObj.findings?.length || 0,
       actionsCount: (row.actions || []).length,
+      primaryHotspot,
     };
   }).reverse();
 }
@@ -266,34 +281,107 @@ export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: 
     summary?: string;
     findings?: Finding[];
     rejectedActions?: Array<{ libraryId: string; reasons: string[] }>;
+    compare?: CompareResult | null;
   };
-  const statsObj = (row.stats || { stats: [], hotspots: [] }) as { stats: LocationStats[]; hotspots: LocalHotspot[] };
+  const statsObj = (row.stats || { stats: [], hotspots: [] }) as {
+    stats: LocationStats[];
+    hotspots: LocalHotspot[];
+    timestamps?: string[];
+    rows?: Array<{
+      row: number;
+      location: string;
+      timestamp: string | null;
+      values: { pm25: number | null; pm10: number | null };
+    }>;
+  };
 
   const timestampsSet = new Set<string>();
   const locationsSet = new Set<string>();
-  const syntheticRows: NormalizedRow[] = [];
-  let rowIndex = 1;
+  let effectiveRows: NormalizedRow[] = [];
+  let sortedTimestamps: string[] = [];
 
-  for (const s of statsObj.stats || []) {
-    locationsSet.add(s.location);
-    if (s.max?.timestamp) {
-      timestampsSet.add(s.max.timestamp);
-      syntheticRows.push({
-        row: rowIndex++,
-        location: s.location,
-        timestamp: s.max.timestamp,
-        values: {
-          pm25: s.pollutant === "pm25" ? s.mean : null,
-          pm10: s.pollutant === "pm10" ? s.mean : null,
-        },
-        lat: null,
-        lng: null,
-      });
+  if (statsObj.rows && statsObj.rows.length > 0) {
+    effectiveRows = statsObj.rows.map((r) => ({
+      row: r.row,
+      location: r.location,
+      timestamp: r.timestamp,
+      values: r.values,
+      lat: null,
+      lng: null,
+    }));
+    sortedTimestamps =
+      statsObj.timestamps && statsObj.timestamps.length > 0
+        ? statsObj.timestamps
+        : Array.from(new Set(statsObj.rows.map((r) => r.timestamp).filter(Boolean) as string[])).sort();
+    for (const r of statsObj.rows) locationsSet.add(r.location);
+  } else {
+    let rowIndex = 1;
+    const syntheticRows: NormalizedRow[] = [];
+    const datePart = row.period_start ? new Date(row.period_start).toISOString().slice(0, 10) : "2026-11-17";
+
+    for (const s of statsObj.stats || []) {
+      locationsSet.add(s.location);
+      if (s.max?.timestamp) {
+        timestampsSet.add(s.max.timestamp);
+        syntheticRows.push({
+          row: rowIndex++,
+          location: s.location,
+          timestamp: s.max.timestamp,
+          values: {
+            pm25: s.pollutant === "pm25" ? s.mean : null,
+            pm10: s.pollutant === "pm10" ? s.mean : null,
+          },
+          lat: null,
+          lng: null,
+        });
+      }
+      for (const b of s.buckets || []) {
+        const hourStr = String(b.startHour).padStart(2, "0");
+        const ts = `${datePart}T${hourStr}:00`;
+        timestampsSet.add(ts);
+        syntheticRows.push({
+          row: rowIndex++,
+          location: s.location,
+          timestamp: ts,
+          values: {
+            pm25: s.pollutant === "pm25" ? b.mean : null,
+            pm10: s.pollutant === "pm10" ? b.mean : null,
+          },
+          lat: null,
+          lng: null,
+        });
+      }
     }
+    sortedTimestamps = Array.from(timestampsSet).sort();
+    effectiveRows = syntheticRows;
   }
 
-  const sortedTimestamps = Array.from(timestampsSet).sort();
   const sortedLocations = row.locations && row.locations.length > 0 ? row.locations : Array.from(locationsSet).sort();
+
+  const currentSnapshot: BriefSnapshot = {
+    periodStart: localTimestamp(row.period_start),
+    periodEnd: localTimestamp(row.period_end),
+    locations: sortedLocations,
+    stats: statsObj.stats || [],
+    hotspots: statsObj.hotspots || [],
+  };
+
+  let compareResult: CompareResult | null = briefObj.compare ?? null;
+  if (!compareResult) {
+    try {
+      const olderRows = await run<BriefRow>(
+        sql,
+        "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND created_at < $2 ORDER BY created_at DESC LIMIT 1",
+        [workspaceId, row.created_at],
+      );
+      if (olderRows[0]) {
+        const olderPast = toPastBrief(olderRows[0]);
+        compareResult = compareBriefs(olderPast.snapshot, currentSnapshot);
+      }
+    } catch {
+      // fallback
+    }
+  }
 
   return {
     briefId: row.id,
@@ -304,9 +392,9 @@ export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: 
     findings: briefObj.findings || [],
     actions: row.actions || [],
     rejectedActions: briefObj.rejectedActions || [],
-    compare: null,
+    compare: compareResult,
     analysis: {
-      rowCount: syntheticRows.length,
+      rowCount: effectiveRows.length,
       locations: sortedLocations,
       timestamps: sortedTimestamps,
       periodStart: localTimestamp(row.period_start),
@@ -318,15 +406,9 @@ export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: 
       hotspots: statsObj.hotspots || [],
       flags: [],
     },
-    rows: syntheticRows,
+    rows: effectiveRows,
     ledger: row.repairs || [],
-    snapshot: {
-      periodStart: localTimestamp(row.period_start),
-      periodEnd: localTimestamp(row.period_end),
-      locations: sortedLocations,
-      stats: statsObj.stats || [],
-      hotspots: statsObj.hotspots || [],
-    },
+    snapshot: currentSnapshot,
   };
 }
 

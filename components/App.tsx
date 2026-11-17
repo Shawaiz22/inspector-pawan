@@ -12,7 +12,6 @@ import type { BriefResult, Profile, RepairResult } from "@/lib/api/types";
 import { ApiFailure, postJson } from "@/lib/client/api";
 import { loadJson, saveJson } from "@/lib/client/storage";
 import type { CaseSummary } from "@/lib/server/db";
-import type { BriefSnapshot } from "@/lib/types";
 import { BootProvider, BootSplash, BrandMark } from "./BootSplash";
 import { CheckView } from "./CheckView";
 import { EvidenceView } from "./EvidenceView";
@@ -34,8 +33,6 @@ export interface StoredWorkspace {
 
 const WORKSPACE_KEY = "pawan-workspace";
 const TOKENS_KEY = "pawan-workspace-tokens";
-const PREVIOUS_KEY = "pawan-previous";
-const CASE_KEY = "pawan-case-count";
 
 const STEPS: Array<{ view: View; label: string }> = [
   { view: "upload", label: "Upload" },
@@ -75,7 +72,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
   const [loadingCases, setLoadingCases] = useState(false);
   const [editing, setEditing] = useState(false);
   const [creatingNew, setCreatingNew] = useState(false);
-  const [caseCount, setCaseCount] = useState(() => loadJson<number>(CASE_KEY, 0));
+  const [activeCaseNumber, setActiveCaseNumber] = useState<number | null>(null);
   const [view, setView] = useState<View>("upload");
   const [text, setText] = useState("");
   const [sourceLabel, setSourceLabel] = useState("");
@@ -156,10 +153,6 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
         .then((data) => {
           if (mounted) {
             setCases(data);
-            if (data.length > 0) {
-              setCaseCount(data[0].caseNumber);
-              saveJson(CASE_KEY, data[0].caseNumber);
-            }
           }
         })
         .finally(() => {
@@ -223,6 +216,7 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
       loadHistoricalCase(workspace.id!, caseItem.id),
     );
     if (!loaded) return;
+    setActiveCaseNumber(caseItem.caseNumber);
     setResult(loaded);
     setView("evidence");
     setAnnounce(`Opened Case #${caseItem.caseNumber}: ${caseItem.headline}`);
@@ -239,7 +233,6 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
 
   async function createBrief() {
     if (!workspace || !repair) return;
-    const previous = workspace.id ? undefined : loadJson<BriefSnapshot | undefined>(PREVIOUS_KEY, undefined);
     const reply = await run("Writing the brief. Gemini can take up to a minute", (signal) =>
       postJson<BriefResult>(
         "/api/brief",
@@ -250,16 +243,13 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           accepted: [...accepted],
           workspace: workspace.profile,
           ...(workspace.id ? { workspaceId: workspace.id } : {}),
-          ...(previous ? { previous } : {}),
         },
         { signal, token: workspace.token ?? undefined },
       ),
     );
     if (!reply) return;
-    const nextCase = caseCount + 1;
-    saveJson(PREVIOUS_KEY, reply.snapshot);
-    saveJson(CASE_KEY, nextCase);
-    setCaseCount(nextCase);
+    const nextCase = cases.length + 1;
+    setActiveCaseNumber(nextCase);
     setResult(reply);
     setView("evidence");
     setAnnounce(`Case ${nextCase} opened with ${reply.findings.length} findings`);
@@ -462,31 +452,39 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
           />
         ) : (
           <>
-            <nav aria-label="Case steps" className="no-print">
-              <ol className="flex flex-wrap items-center gap-1">
-                {STEPS.map((step, index) => (
-                  <li key={step.view} className="flex items-center gap-1">
-                    {index > 0 ? <span aria-hidden className={`h-px w-4 ${available[step.view] ? "bg-accent" : "bg-line"}`} /> : null}
-                    <button
-                      type="button"
-                      disabled={!available[step.view]}
-                      aria-current={view === step.view ? "step" : undefined}
-                      onClick={() => setView(step.view)}
-                      className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                        view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface hover:border-accent"
-                      }`}
-                    >
-                      <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
-                        view === step.view ? "bg-accent-ink text-accent" : "bg-haze"
-                      }`}>
-                        {index + 1}
-                      </span>
-                      {step.label}
-                    </button>
-                  </li>
-                ))}
-              </ol>
-            </nav>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <nav aria-label="Case steps" className="no-print">
+                <ol className="flex flex-wrap items-center gap-1">
+                  {STEPS.map((step, index) => (
+                    <li key={step.view} className="flex items-center gap-1">
+                      {index > 0 ? <span aria-hidden className={`h-px w-4 ${available[step.view] ? "bg-accent" : "bg-line"}`} /> : null}
+                      <button
+                        type="button"
+                        disabled={!available[step.view]}
+                        aria-current={view === step.view ? "step" : undefined}
+                        onClick={() => setView(step.view)}
+                        className={`flex items-center gap-2 rounded-full py-1 pl-1 pr-3 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          view === step.view ? "bg-accent text-accent-ink" : "border border-line bg-surface hover:border-accent"
+                        }`}
+                      >
+                        <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
+                          view === step.view ? "bg-accent-ink text-accent" : "bg-haze"
+                        }`}>
+                          {index + 1}
+                        </span>
+                        {step.label}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+
+              {activeCaseNumber ? (
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted shadow-sm">
+                  <span className="font-bold text-ink">Active Case #{activeCaseNumber}</span>
+                </div>
+              ) : null}
+            </div>
 
             {busy ? (
               <p role="status" className="flex items-center gap-3 rounded-[14px] border border-line bg-surface px-4 py-3">
@@ -534,7 +532,18 @@ function Workspace({ onLock, userEmail }: { onLock?: () => Promise<void>; userEm
             {view === "evidence" && result ? <EvidenceView result={result} /> : null}
             {view === "plan" && result ? <PlanView actions={result.actions} rejected={result.rejectedActions} places={workspace.profile.places} /> : null}
             {view === "notice" && result ? <NoticeView result={result} workspace={workspace} /> : null}
-            {view === "followup" && result ? <FollowUpView result={result} onNext={() => { setRepair(null); setText(""); setView("upload"); }} /> : null}
+            {view === "followup" && result ? (
+              <FollowUpView
+                result={result}
+                onNext={() => {
+                  setRepair(null);
+                  setText("");
+                  setResult(null);
+                  setActiveCaseNumber(null);
+                  setView("upload");
+                }}
+              />
+            ) : null}
           </>
         )}
       </div>
