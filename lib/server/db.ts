@@ -1,6 +1,9 @@
 import "server-only";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import type { BriefSnapshot, CaseAction, LocationStats, LocalHotspot, RepairLogEntry, Role } from "../types";
+import { compareBriefs } from "../brief/compare";
+import type { PlaceEntry } from "../places";
+import type { BriefSnapshot, CaseAction, CompareResult, Finding, LocationStats, LocalHotspot, NormalizedRow, RepairLogEntry, Role } from "../types";
+import type { BriefResult } from "../api/types";
 import { readServerEnv } from "./env";
 import { StorageError } from "./errors";
 
@@ -27,25 +30,67 @@ async function run<T>(sql: Sql, text: string, params: unknown[]): Promise<T[]> {
 /** A workspace as stored. */
 export interface WorkspaceRecord {
   id: string;
+  owner_email: string | null;
   token_hash: string;
   role: Role;
   name: string;
   role_note: string | null;
-  places: string[];
+  places: PlaceEntry[];
   created_at: string;
+}
+
+/** Ensures the workspaces table exists and has owner_email. */
+export async function ensureWorkspacesTable(sql: Sql): Promise<void> {
+  await run(
+    sql,
+    `CREATE TABLE IF NOT EXISTS workspaces (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_email text,
+      token_hash text NOT NULL,
+      role text NOT NULL,
+      name text NOT NULL,
+      role_note text,
+      places jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    [],
+  );
+  await run(
+    sql,
+    `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_email text`,
+    [],
+  );
+  await run(
+    sql,
+    `CREATE INDEX IF NOT EXISTS workspaces_owner_email_idx ON workspaces (owner_email)`,
+    [],
+  );
 }
 
 /** Inserts a workspace and returns its id. */
 export async function insertWorkspace(
   sql: Sql,
-  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: string[] },
+  input: { tokenHash: string; role: Role; name: string; roleNote: string | null; places: PlaceEntry[]; ownerEmail?: string | null },
 ): Promise<string> {
   const rows = await run<{ id: string }>(
     sql,
-    "INSERT INTO workspaces (token_hash, role, name, role_note, places) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id",
-    [input.tokenHash, input.role, input.name, input.roleNote, JSON.stringify(input.places)],
+    "INSERT INTO workspaces (token_hash, role, name, role_note, places, owner_email) VALUES ($1, $2, $3, $4, $5::jsonb, $6) RETURNING id",
+    [input.tokenHash, input.role, input.name, input.roleNote, JSON.stringify(input.places), input.ownerEmail ?? null],
   );
   return rows[0].id;
+}
+
+/** Lists all workspaces owned by a given email address. */
+export async function listWorkspacesByOwner(sql: Sql, ownerEmail: string): Promise<WorkspaceRecord[]> {
+  try {
+    return await run<WorkspaceRecord>(
+      sql,
+      "SELECT * FROM workspaces WHERE LOWER(owner_email) = LOWER($1) ORDER BY created_at DESC",
+      [ownerEmail.trim()],
+    );
+  } catch {
+    return [];
+  }
 }
 
 /** Loads a workspace by id, or null. */
@@ -58,7 +103,7 @@ export async function findWorkspace(sql: Sql, id: string): Promise<WorkspaceReco
 export async function updateWorkspace(
   sql: Sql,
   id: string,
-  input: { role?: Role; name?: string; roleNote?: string | null; places?: string[] },
+  input: { role?: Role; name?: string; roleNote?: string | null; places?: PlaceEntry[] },
 ): Promise<WorkspaceRecord | null> {
   const rows = await run<WorkspaceRecord>(
     sql,
@@ -87,7 +132,17 @@ export interface StoredBriefInput {
   periodStart: string | null;
   periodEnd: string | null;
   locations: string[];
-  stats: { stats: LocationStats[]; hotspots: LocalHotspot[] };
+  stats: {
+    stats: LocationStats[];
+    hotspots: LocalHotspot[];
+    timestamps?: string[];
+    rows?: Array<{
+      row: number;
+      location: string;
+      timestamp: string | null;
+      values: { pm25: number | null; pm10: number | null };
+    }>;
+  };
   brief: unknown;
   actions: CaseAction[];
   repairs: RepairLogEntry[];
@@ -149,12 +204,260 @@ function toPastBrief(row: BriefRow): PastBrief {
   };
 }
 
-/** The previous brief: a chosen one, or the latest of the workspace. */
-export async function findPreviousBrief(sql: Sql, workspaceId: string, briefId?: string): Promise<PastBrief | null> {
-  const rows = briefId
-    ? await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2", [workspaceId, briefId])
-    : await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 1", [workspaceId]);
-  return rows[0] ? toPastBrief(rows[0]) : null;
+/** The previous brief: a chosen one, or the most recent matching series brief of the workspace. */
+export async function findPreviousBrief(
+  sql: Sql,
+  workspaceId: string,
+  briefId?: string,
+  candidateLocations?: string[],
+): Promise<PastBrief | null> {
+  if (briefId) {
+    const rows = await run<BriefRow>(
+      sql,
+      "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2",
+      [workspaceId, briefId],
+    );
+    return rows[0] ? toPastBrief(rows[0]) : null;
+  }
+
+  const rows = await run<BriefRow>(
+    sql,
+    "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 20",
+    [workspaceId],
+  );
+  if (rows.length === 0) return null;
+
+  if (candidateLocations && candidateLocations.length > 0) {
+    const candSet = new Set(candidateLocations.map((l) => l.toLowerCase().trim()));
+    for (const r of rows) {
+      const rSet = new Set((r.locations || []).map((l) => l.toLowerCase().trim()));
+      let shared = 0;
+      for (const loc of candSet) {
+        if (rSet.has(loc)) shared += 1;
+      }
+      const overlapA = candSet.size > 0 ? shared / candSet.size : 0;
+      const overlapB = rSet.size > 0 ? shared / rSet.size : 0;
+      if (overlapA >= 0.35 || overlapB >= 0.35) {
+        return toPastBrief(r);
+      }
+    }
+  }
+
+  return toPastBrief(rows[0]);
+}
+
+export interface CaseSummary {
+  id: string;
+  caseNumber: number;
+  createdAt: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  locations: string[];
+  headline: string;
+  summary: string;
+  findingsCount: number;
+  actionsCount: number;
+  primaryHotspot: string | null;
+}
+
+interface FullBriefRow {
+  id: string;
+  fingerprint: string;
+  period_start: string | null;
+  period_end: string | null;
+  locations: string[];
+  stats: { stats: LocationStats[]; hotspots: LocalHotspot[] };
+  brief: { headline?: string; summary?: string; findings?: Finding[]; rejectedActions?: Array<{ libraryId: string; reasons: string[] }> };
+  actions: CaseAction[];
+  repairs: RepairLogEntry[];
+  created_at: string;
+}
+
+/** Lists all cases in a workspace in chronological order with summary metrics. */
+export async function listCasesByWorkspace(sql: Sql, workspaceId: string): Promise<CaseSummary[]> {
+  const rows = await run<FullBriefRow>(
+    sql,
+    "SELECT id, period_start, period_end, locations, stats, brief, actions, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at ASC",
+    [workspaceId],
+  );
+  return rows.map((row, index) => {
+    const briefObj = (row.brief || {}) as { headline?: string; summary?: string; findings?: Finding[] };
+    const statsObj = (row.stats || {}) as { hotspots?: LocalHotspot[] };
+    const primaryHotspot = statsObj.hotspots?.[0]?.location ?? null;
+    return {
+      id: row.id,
+      caseNumber: index + 1,
+      createdAt: new Date(row.created_at).toISOString(),
+      periodStart: localTimestamp(row.period_start),
+      periodEnd: localTimestamp(row.period_end),
+      locations: row.locations || [],
+      headline: briefObj.headline || `Case #${index + 1}`,
+      summary: briefObj.summary || "",
+      findingsCount: briefObj.findings?.length || 0,
+      actionsCount: (row.actions || []).length,
+      primaryHotspot,
+    };
+  }).reverse();
+}
+
+/** Loads and reconstructs the full BriefResult for any historical case. */
+export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: string): Promise<BriefResult | null> {
+  const rows = await run<FullBriefRow>(
+    sql,
+    "SELECT * FROM briefs WHERE workspace_id = $1 AND id = $2",
+    [workspaceId, briefId],
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const briefObj = (row.brief || {}) as {
+    headline?: string;
+    summary?: string;
+    findings?: Finding[];
+    rejectedActions?: Array<{ libraryId: string; reasons: string[] }>;
+    compare?: CompareResult | null;
+  };
+  const statsObj = (row.stats || { stats: [], hotspots: [] }) as {
+    stats: LocationStats[];
+    hotspots: LocalHotspot[];
+    timestamps?: string[];
+    rows?: Array<{
+      row: number;
+      location: string;
+      timestamp: string | null;
+      values: { pm25: number | null; pm10: number | null };
+    }>;
+  };
+
+  const timestampsSet = new Set<string>();
+  const locationsSet = new Set<string>();
+  let effectiveRows: NormalizedRow[] = [];
+  let sortedTimestamps: string[] = [];
+
+  if (statsObj.rows && statsObj.rows.length > 0) {
+    effectiveRows = statsObj.rows.map((r) => ({
+      row: r.row,
+      location: r.location,
+      timestamp: r.timestamp,
+      values: r.values,
+      lat: null,
+      lng: null,
+    }));
+    sortedTimestamps =
+      statsObj.timestamps && statsObj.timestamps.length > 0
+        ? statsObj.timestamps
+        : Array.from(new Set(statsObj.rows.map((r) => r.timestamp).filter(Boolean) as string[])).sort();
+    for (const r of statsObj.rows) locationsSet.add(r.location);
+  } else {
+    let rowIndex = 1;
+    const syntheticRows: NormalizedRow[] = [];
+    const datePart = row.period_start ? new Date(row.period_start).toISOString().slice(0, 10) : "2026-11-17";
+
+    for (const s of statsObj.stats || []) {
+      locationsSet.add(s.location);
+      if (s.max?.timestamp) {
+        timestampsSet.add(s.max.timestamp);
+        syntheticRows.push({
+          row: rowIndex++,
+          location: s.location,
+          timestamp: s.max.timestamp,
+          values: {
+            pm25: s.pollutant === "pm25" ? s.mean : null,
+            pm10: s.pollutant === "pm10" ? s.mean : null,
+          },
+          lat: null,
+          lng: null,
+        });
+      }
+      for (const b of s.buckets || []) {
+        const hourStr = String(b.startHour).padStart(2, "0");
+        const ts = `${datePart}T${hourStr}:00`;
+        timestampsSet.add(ts);
+        syntheticRows.push({
+          row: rowIndex++,
+          location: s.location,
+          timestamp: ts,
+          values: {
+            pm25: s.pollutant === "pm25" ? b.mean : null,
+            pm10: s.pollutant === "pm10" ? b.mean : null,
+          },
+          lat: null,
+          lng: null,
+        });
+      }
+    }
+    sortedTimestamps = Array.from(timestampsSet).sort();
+    effectiveRows = syntheticRows;
+  }
+
+  const sortedLocations = row.locations && row.locations.length > 0 ? row.locations : Array.from(locationsSet).sort();
+
+  const currentSnapshot: BriefSnapshot = {
+    periodStart: localTimestamp(row.period_start),
+    periodEnd: localTimestamp(row.period_end),
+    locations: sortedLocations,
+    stats: statsObj.stats || [],
+    hotspots: statsObj.hotspots || [],
+  };
+
+  let compareResult: CompareResult | null = briefObj.compare ?? null;
+  if (!compareResult) {
+    try {
+      const olderRows = await run<BriefRow>(
+        sql,
+        "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND created_at < $2 ORDER BY created_at DESC LIMIT 10",
+        [workspaceId, row.created_at],
+      );
+      if (olderRows.length > 0) {
+        const curSet = new Set(sortedLocations.map((l) => l.toLowerCase().trim()));
+        let matchedRow = olderRows[0];
+        for (const r of olderRows) {
+          const rSet = new Set((r.locations || []).map((l) => l.toLowerCase().trim()));
+          let shared = 0;
+          for (const loc of curSet) {
+            if (rSet.has(loc)) shared += 1;
+          }
+          const overlap = curSet.size > 0 ? shared / curSet.size : 0;
+          if (overlap >= 0.35) {
+            matchedRow = r;
+            break;
+          }
+        }
+        const olderPast = toPastBrief(matchedRow);
+        compareResult = compareBriefs(olderPast.snapshot, currentSnapshot);
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  return {
+    briefId: row.id,
+    createdAt: new Date(row.created_at).toISOString(),
+    fingerprint: row.fingerprint,
+    headline: briefObj.headline || "Investigation Brief",
+    summary: briefObj.summary || "",
+    findings: briefObj.findings || [],
+    actions: row.actions || [],
+    rejectedActions: briefObj.rejectedActions || [],
+    compare: compareResult,
+    analysis: {
+      rowCount: effectiveRows.length,
+      locations: sortedLocations,
+      timestamps: sortedTimestamps,
+      periodStart: localTimestamp(row.period_start),
+      periodEnd: localTimestamp(row.period_end),
+      coordinates: {},
+      stats: statsObj.stats || [],
+      events: [],
+      eventSlots: [],
+      hotspots: statsObj.hotspots || [],
+      flags: [],
+    },
+    rows: effectiveRows,
+    ledger: row.repairs || [],
+    snapshot: currentSnapshot,
+  };
 }
 
 /** Recent briefs of a workspace, newest first, for the compare picker. */
@@ -201,4 +504,94 @@ export async function findNotice(
   );
   const row = rows[0];
   return row ? { slug: row.slug, area: row.area, content: row.content, publishedAt: new Date(row.published_at).toISOString() } : null;
+}
+
+/** An access code record stored in PostgreSQL. */
+export interface AccessCodeRecord {
+  id: string;
+  email: string;
+  code_hash: string;
+  code_prefix: string;
+  is_active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/** Idempotently creates the access_codes table and index if missing. */
+export async function ensureAccessCodeTable(sql: Sql): Promise<void> {
+  await run(
+    sql,
+    `CREATE TABLE IF NOT EXISTS access_codes (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      email text NOT NULL,
+      code_hash text NOT NULL UNIQUE,
+      code_prefix text NOT NULL,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz,
+      revoked_at timestamptz,
+      metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+    )`,
+    [],
+  );
+  await run(
+    sql,
+    `CREATE INDEX IF NOT EXISTS access_codes_email_idx ON access_codes (email)`,
+    [],
+  );
+}
+
+/** Inserts a new access code record, deactivating previous codes for this email. */
+export async function insertAccessCode(
+  sql: Sql,
+  input: { email: string; codeHash: string; codePrefix: string; metadata?: Record<string, unknown> },
+): Promise<AccessCodeRecord> {
+  await ensureAccessCodeTable(sql);
+  const normalizedEmail = input.email.toLowerCase().trim();
+  await run(
+    sql,
+    "UPDATE access_codes SET is_active = false, revoked_at = now() WHERE LOWER(email) = $1 AND is_active = true",
+    [normalizedEmail],
+  );
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    `INSERT INTO access_codes (email, code_hash, code_prefix, metadata)
+     VALUES ($1, $2, $3, $4::jsonb)
+     RETURNING *`,
+    [normalizedEmail, input.codeHash, input.codePrefix, JSON.stringify(input.metadata ?? {})],
+  );
+  return rows[0];
+}
+
+/** Looks up an active access code by its SHA-256 hash. */
+export async function findActiveAccessCode(sql: Sql, codeHash: string): Promise<AccessCodeRecord | null> {
+  await ensureAccessCodeTable(sql);
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    "SELECT * FROM access_codes WHERE code_hash = $1 AND is_active = true",
+    [codeHash],
+  );
+  return rows[0] ?? null;
+}
+
+/** Updates the last_used_at timestamp on an access code. */
+export async function touchAccessCode(sql: Sql, id: string): Promise<void> {
+  await run(
+    sql,
+    "UPDATE access_codes SET last_used_at = now() WHERE id = $1",
+    [id],
+  );
+}
+
+/** Finds the most recent active access code for an email. */
+export async function findLatestAccessCodeByEmail(sql: Sql, email: string): Promise<AccessCodeRecord | null> {
+  await ensureAccessCodeTable(sql);
+  const rows = await run<AccessCodeRecord>(
+    sql,
+    "SELECT * FROM access_codes WHERE email = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+    [email.toLowerCase().trim()],
+  );
+  return rows[0] ?? null;
 }

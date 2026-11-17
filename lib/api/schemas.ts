@@ -4,14 +4,25 @@ import { ROLE_NOTE_MAX } from "../roles";
 
 const role = z.enum(["ward_officer", "school", "housing_society", "other"]);
 const pollutant = z.enum(["pm25", "pm10"]);
-const place = z.string().trim().min(1).max(120);
+
+const placeCategory = z.enum(["industrial", "construction", "school", "hospital", "commercial", "other"]);
+
+export const structuredPlaceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  category: placeCategory.default("other"),
+  customCategory: z.string().trim().max(100).nullable().optional(),
+  contact: z.string().trim().max(120).nullable().optional(),
+});
+
+export const placeItemSchema = z.union([z.string().trim().min(1).max(120), structuredPlaceSchema]);
 
 /** Workspace profile fields. */
 export const workspaceProfile = z.object({
   role,
   name: z.string().trim().min(1).max(120),
   roleNote: z.string().trim().max(ROLE_NOTE_MAX).nullable().default(null),
-  places: z.array(place).max(10).default([]),
+  places: z.array(placeItemSchema).max(10).default([]),
+  ownerEmail: z.string().trim().email().nullable().optional(),
 });
 
 /** POST /api/workspace */

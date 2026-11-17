@@ -12,13 +12,17 @@ import type {
   RepairProposal,
   Role,
 } from "../types";
+import type { PlaceCategory, PlaceEntry, StructuredPlace } from "../places";
+
+export type { PlaceCategory, PlaceEntry, StructuredPlace };
 
 /** Workspace profile as typed by the owner. */
 export interface Profile {
   role: Role;
   name: string;
   roleNote: string | null;
-  places: string[];
+  places: PlaceEntry[];
+  ownerEmail?: string | null;
 }
 
 /** Response of POST /api/repair. */

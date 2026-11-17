@@ -1,7 +1,8 @@
 import libraryJson from "../../data/action-library.json";
+import { isAtLeast } from "../data/naqi";
+import { placeName, type PlaceEntry } from "../places";
 import { WARD_OFFICE } from "../roles";
 import type { CaseAction, DatasetAnalysis, LibraryAction, Role } from "../types";
-import { isAtLeast } from "../data/naqi";
 import { isKnownLocation, verifyCitation, type RowIndex } from "./verify";
 
 /** The full action library. */
@@ -23,7 +24,7 @@ export interface ActionContext {
   analysis: Pick<DatasetAnalysis, "locations" | "events" | "hotspots" | "stats">;
   rowIndex: RowIndex;
   /** Nearby places the workspace owner listed. */
-  places: readonly string[];
+  places: readonly PlaceEntry[];
 }
 
 /** An action code refused, with the reasons. */
@@ -49,14 +50,14 @@ function needsReasons(entry: LibraryAction, action: ProposedAction, context: Act
   return [];
 }
 
-function letterReasons(entry: LibraryAction, action: ProposedAction, places: readonly string[]): string[] {
+function letterReasons(entry: LibraryAction, action: ProposedAction, places: readonly PlaceEntry[]): string[] {
   if (!entry.asks) return [];
   const recipient = action.letter?.to ?? "";
   if (!action.letter || !action.letter.body.trim()) return ["An \"Ask others\" action needs a drafted letter."];
   if (entry.asks === "ward_office" && !sameText(recipient, WARD_OFFICE)) {
     return [`This letter must go to the ${WARD_OFFICE.toLowerCase()}.`];
   }
-  const allowed = sameText(recipient, WARD_OFFICE) || places.some((place) => sameText(place, recipient));
+  const allowed = sameText(recipient, WARD_OFFICE) || places.some((place) => sameText(placeName(place), recipient));
   return allowed ? [] : [`"${recipient}" is not the ward office or one of your listed places.`];
 }
 
