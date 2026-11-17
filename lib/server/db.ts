@@ -204,12 +204,46 @@ function toPastBrief(row: BriefRow): PastBrief {
   };
 }
 
-/** The previous brief: a chosen one, or the latest of the workspace. */
-export async function findPreviousBrief(sql: Sql, workspaceId: string, briefId?: string): Promise<PastBrief | null> {
-  const rows = briefId
-    ? await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2", [workspaceId, briefId])
-    : await run<BriefRow>(sql, "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 1", [workspaceId]);
-  return rows[0] ? toPastBrief(rows[0]) : null;
+/** The previous brief: a chosen one, or the most recent matching series brief of the workspace. */
+export async function findPreviousBrief(
+  sql: Sql,
+  workspaceId: string,
+  briefId?: string,
+  candidateLocations?: string[],
+): Promise<PastBrief | null> {
+  if (briefId) {
+    const rows = await run<BriefRow>(
+      sql,
+      "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND id = $2",
+      [workspaceId, briefId],
+    );
+    return rows[0] ? toPastBrief(rows[0]) : null;
+  }
+
+  const rows = await run<BriefRow>(
+    sql,
+    "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 20",
+    [workspaceId],
+  );
+  if (rows.length === 0) return null;
+
+  if (candidateLocations && candidateLocations.length > 0) {
+    const candSet = new Set(candidateLocations.map((l) => l.toLowerCase().trim()));
+    for (const r of rows) {
+      const rSet = new Set((r.locations || []).map((l) => l.toLowerCase().trim()));
+      let shared = 0;
+      for (const loc of candSet) {
+        if (rSet.has(loc)) shared += 1;
+      }
+      const overlapA = candSet.size > 0 ? shared / candSet.size : 0;
+      const overlapB = rSet.size > 0 ? shared / rSet.size : 0;
+      if (overlapA >= 0.35 || overlapB >= 0.35) {
+        return toPastBrief(r);
+      }
+    }
+  }
+
+  return toPastBrief(rows[0]);
 }
 
 export interface CaseSummary {
@@ -371,11 +405,25 @@ export async function findFullCaseBrief(sql: Sql, workspaceId: string, briefId: 
     try {
       const olderRows = await run<BriefRow>(
         sql,
-        "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND created_at < $2 ORDER BY created_at DESC LIMIT 1",
+        "SELECT id, period_start, period_end, locations, stats, created_at FROM briefs WHERE workspace_id = $1 AND created_at < $2 ORDER BY created_at DESC LIMIT 10",
         [workspaceId, row.created_at],
       );
-      if (olderRows[0]) {
-        const olderPast = toPastBrief(olderRows[0]);
+      if (olderRows.length > 0) {
+        const curSet = new Set(sortedLocations.map((l) => l.toLowerCase().trim()));
+        let matchedRow = olderRows[0];
+        for (const r of olderRows) {
+          const rSet = new Set((r.locations || []).map((l) => l.toLowerCase().trim()));
+          let shared = 0;
+          for (const loc of curSet) {
+            if (rSet.has(loc)) shared += 1;
+          }
+          const overlap = curSet.size > 0 ? shared / curSet.size : 0;
+          if (overlap >= 0.35) {
+            matchedRow = r;
+            break;
+          }
+        }
+        const olderPast = toPastBrief(matchedRow);
         compareResult = compareBriefs(olderPast.snapshot, currentSnapshot);
       }
     } catch {

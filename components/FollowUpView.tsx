@@ -15,9 +15,25 @@ export function FollowUpView({
   return (
     <Panel title="Follow-up">
       {compare === null ? (
-        <p>This is the first case in this workspace. Upload next week&apos;s data to see what changed.</p>
+        <p className="text-muted text-sm">
+          This is the first case in this workspace. Upload next week&apos;s data to see what changed.
+        </p>
       ) : compare.status === "different_areas" ? (
-        <Warning>{compare.message}</Warning>
+        <div className="flex flex-col gap-2 rounded-[12px] border border-line bg-surface p-4">
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-semibold text-accent">
+              New Baseline Series
+            </span>
+            <span className="text-xs text-muted">Independent location series</span>
+          </div>
+          <p className="text-sm font-semibold text-ink">
+            This investigation covers a new set of locations ({result.analysis.locations.slice(0, 3).join(", ")}
+            {result.analysis.locations.length > 3 ? ` +${result.analysis.locations.length - 3} more` : ""}), establishing a new baseline.
+          </p>
+          <p className="text-xs text-muted leading-relaxed">
+            Because these locations don&apos;t overlap with earlier cases, Pawan treats this as a separate investigation series. Upload subsequent readings for these sensors to track follow-up progress here.
+          </p>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {compare.notNewer ? <Warning>This data is not newer than your last brief.</Warning> : null}

@@ -43,7 +43,7 @@ export function POST(request: Request): Promise<Response> {
     const { analysis, normalized } = prepared;
 
     const sql = getSql();
-    const past = stored && sql ? await findPreviousBrief(sql, stored.id, body.previousBriefId) : null;
+    const past = stored && sql ? await findPreviousBrief(sql, stored.id, body.previousBriefId, analysis.locations) : null;
     const previous = past?.snapshot ?? (body.previous as unknown as BriefSnapshot | undefined) ?? null;
     const compare: CompareResult | null = previous ? compareBriefs(previous, snapshotOf(analysis)) : null;
 
