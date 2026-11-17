@@ -15,9 +15,12 @@ export async function sendAccessCodeEmail(email: string, code: string): Promise<
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const fromEmail = process.env.RESEND_FROM_EMAIL?.trim() || "Inspector Pawan <onboarding@resend.dev>";
 
+  const allowDevPreview =
+    process.env.NODE_ENV !== "production" && process.env.DEV_ACCESS_CODE_PREVIEW !== "false";
+
   if (!apiKey) {
     process.stdout.write(`\n[ACCESS CODE] Generated code for ${email}: ${code}\n\n`);
-    return { sent: true, devMode: true };
+    return { sent: true, devMode: allowDevPreview };
   }
 
   try {

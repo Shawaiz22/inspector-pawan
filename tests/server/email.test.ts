@@ -60,4 +60,22 @@ describe("sendAccessCodeEmail", () => {
     expect(result.sent).toBe(false);
     expect(result.error).toContain("400");
   });
+
+  it("disables devMode preview when DEV_ACCESS_CODE_PREVIEW is false", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    process.env.DEV_ACCESS_CODE_PREVIEW = "false";
+    const result = await sendAccessCodeEmail("officer@example.com", "PAWAN-TEST-CODE");
+
+    expect(result.sent).toBe(true);
+    expect(result.devMode).toBe(false);
+  });
+
+  it("disables devMode preview in production environment", async () => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    process.env.NODE_ENV = "production";
+    const result = await sendAccessCodeEmail("officer@example.com", "PAWAN-TEST-CODE");
+
+    expect(result.sent).toBe(true);
+    expect(result.devMode).toBe(false);
+  });
 });
